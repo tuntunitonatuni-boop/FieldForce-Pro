@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Layout from './components/Layout';
 import AttendancePanel from './components/AttendancePanel';
 import LiveMap from './components/LiveMap';
@@ -14,23 +14,28 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('attendance');
   const [isTracking, setIsTracking] = useState(false);
-  const [trackingData, setTrackingData] = useState<Record<string, { lat: number, lng: number, lastUpdate: string }>>({});
+  const [trackingData, setTrackingData] = useState<Record<string, { lat: number, lng: number, lastUpdate: string, name?: string, role?: string }>>({});
+  const [allUsers, setAllUsers] = useState<User[]>([]);
   const [aiAdvice, setAiAdvice] = useState<string>('');
   const [isAdviceLoading, setIsAdviceLoading] = useState(false);
+  
+  const syncIntervalRef = useRef<number | null>(null);
+  const fetchIntervalRef = useRef<number | null>(null);
 
   useEffect(() => {
-    // Check initial session
     const checkSession = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
-          setUser({
+          const userData: User = {
             id: session.user.id,
             email: session.user.email || '',
             name: session.user.user_metadata?.full_name || 'User',
-            role: session.user.user_metadata?.role || Role.OFFICER,
+            role: (session.user.user_metadata?.role as Role) || Role.OFFICER,
             branch_id: session.user.user_metadata?.branch_id || 'b1',
-          });
+          };
+          setUser(userData);
+          fetchUsers();
         }
       } catch (err) {
         console.error("Auth session check failed", err);
@@ -41,45 +46,135 @@ const App: React.FC = () => {
 
     checkSession();
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         setUser({
           id: session.user.id,
           email: session.user.email || '',
           name: session.user.user_metadata?.full_name || 'User',
-          role: session.user.user_metadata?.role || Role.OFFICER,
+          role: (session.user.user_metadata?.role as Role) || Role.OFFICER,
           branch_id: session.user.user_metadata?.branch_id || 'b1',
         });
+        fetchUsers();
       } else {
         setUser(null);
+        setAllUsers([]);
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  // Tracking Logic
-  useEffect(() => {
-    if (!user || !isTracking) return;
-
-    const watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        setTrackingData(prev => ({
-          ...prev,
-          [user.id]: {
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-            lastUpdate: new Date().toISOString()
-          }
+  const fetchUsers = async () => {
+    try {
+      const { data, error } = await supabase.from('profiles').select('*');
+      if (data && !error) {
+        const formattedUsers = data.map(p => ({
+          id: p.id,
+          name: p.full_name,
+          email: '',
+          role: p.role as Role,
+          branch_id: p.branch_id
         }));
-      },
-      (err) => console.error("GPS Tracking Error:", err),
-      { enableHighAccuracy: true }
-    );
+        setAllUsers(formattedUsers);
+      }
+    } catch (e) {
+      console.warn("Profiles table might not exist yet:", e);
+    }
+  };
 
-    return () => navigator.geolocation.clearWatch(watchId);
+  useEffect(() => {
+    if (!user || !isTracking) {
+      if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
+      return;
+    }
+
+    const updateMyLocation = () => {
+      if (!navigator.geolocation) return;
+      
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          try {
+            await supabase.from('movement_logs').insert({
+              user_id: user.id,
+              lat: pos.coords.latitude,
+              lng: pos.coords.longitude,
+            });
+            
+            setTrackingData(prev => ({
+              ...prev,
+              [user.id]: {
+                lat: pos.coords.latitude,
+                lng: pos.coords.longitude,
+                lastUpdate: new Date().toISOString(),
+                name: user.name,
+                role: user.role
+              }
+            }));
+          } catch (e) {
+            console.error("Movement sync failed:", e);
+          }
+        },
+        (err) => console.error("GPS Error:", err),
+        { enableHighAccuracy: true }
+      );
+    };
+
+    updateMyLocation();
+    syncIntervalRef.current = window.setInterval(updateMyLocation, 15000);
+
+    return () => {
+      if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
+    };
   }, [user, isTracking]);
+
+  useEffect(() => {
+    if (!user || (user.role === Role.OFFICER && activeTab !== 'tracking')) return;
+
+    const fetchAllLocations = async () => {
+      try {
+        const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
+        const { data, error } = await supabase
+          .from('movement_logs')
+          .select(`
+            user_id,
+            lat,
+            lng,
+            timestamp
+          `)
+          .gt('timestamp', oneHourAgo)
+          .order('timestamp', { ascending: false });
+
+        if (data && !error) {
+          const latestLocations: any = {};
+          // Note: In a real app, join with profiles. Here we simulate for reliability.
+          data.forEach((log: any) => {
+            if (!latestLocations[log.user_id]) {
+              const profile = allUsers.find(u => u.id === log.user_id);
+              latestLocations[log.user_id] = {
+                lat: Number(log.lat),
+                lng: Number(log.lng),
+                lastUpdate: log.timestamp,
+                name: profile?.name || 'Staff Member',
+                role: profile?.role || Role.OFFICER,
+                branch_id: profile?.branch_id || 'b1'
+              };
+            }
+          });
+          setTrackingData(prev => ({ ...prev, ...latestLocations }));
+        }
+      } catch (e) {
+        console.error("Fetch locations error:", e);
+      }
+    };
+
+    fetchAllLocations();
+    fetchIntervalRef.current = window.setInterval(fetchAllLocations, 20000);
+
+    return () => {
+      if (fetchIntervalRef.current) clearInterval(fetchIntervalRef.current);
+    };
+  }, [user, activeTab, allUsers]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -126,7 +221,7 @@ const App: React.FC = () => {
                 <div className={`w-3 h-3 rounded-full ${isTracking ? 'bg-green-500 animate-pulse' : 'bg-slate-300'}`}></div>
                 <div>
                   <h4 className="font-bold text-slate-800 tracking-tight">ট্র্যাকিং স্ট্যাটাস: {isTracking ? 'সক্রিয়' : 'বন্ধ'}</h4>
-                  <p className="text-xs text-slate-500">লাইভ লোকেশন ড্যাশবোর্ডে পাঠানো হচ্ছে</p>
+                  <p className="text-xs text-slate-500">লাইভ লোকেশন ড্যাশবোর্ড আপডেট হচ্ছে</p>
                 </div>
               </div>
               <button 
@@ -141,14 +236,13 @@ const App: React.FC = () => {
               </button>
             </div>
             <div className="flex-1">
-              <LiveMap users={[user]} trackingData={trackingData} currentUser={user} />
+              <LiveMap users={allUsers} trackingData={trackingData} currentUser={user} />
             </div>
           </div>
         )}
 
         {activeTab === 'dashboard' && <Dashboard currentUser={user} />}
 
-        {/* AI Assistant FAB */}
         <div className="fixed right-6 bottom-24 md:bottom-8 z-30">
           <div className="relative group">
             {aiAdvice && (
