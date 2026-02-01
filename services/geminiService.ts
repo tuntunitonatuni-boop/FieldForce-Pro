@@ -1,20 +1,25 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 
-// Safely access API key for browser environments
+/**
+ * Safely accesses the API key from the environment.
+ * The system ensures process.env.API_KEY is available at runtime.
+ */
 const getApiKey = () => {
   try {
-    return typeof process !== 'undefined' && process.env ? process.env.API_KEY || '' : '';
+    return process.env.API_KEY || '';
   } catch (e) {
     return '';
   }
 };
 
+// Initialize the Gemini client using the required pattern.
+// We wrap it to ensure we don't crash if process is briefly unavailable during hydration.
 const ai = new GoogleGenAI({ apiKey: getApiKey() });
 
 export const getFieldAssistantAdvice = async (userName: string, role: string, locationContext?: string) => {
   const key = getApiKey();
-  if (!key) return "জিপিএস অন রাখুন এবং হাইড্রেটেড থাকুন। (API Key সেট করা নেই)";
+  if (!key) return "জিপিএস অন রাখুন এবং হাইড্রেটেড থাকুন। (পরিবেশ ভেরিয়েবল পাওয়া যায়নি)";
 
   try {
     const response = await ai.models.generateContent({
@@ -56,6 +61,7 @@ export const getAttendanceSummaryAI = async (attendanceData: any[]) => {
     });
     return JSON.parse(response.text);
   } catch (error) {
+    console.error("Gemini Summary Error:", error);
     return { summary: "ডেটা বিশ্লেষণ বর্তমানে অনুপলব্ধ।", punctualityRating: 0 };
   }
 };
