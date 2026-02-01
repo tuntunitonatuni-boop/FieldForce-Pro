@@ -1,0 +1,7 @@
+{
+  "name": "FieldForce Pro",
+  "description": "A comprehensive field force management system with geo-fenced attendance, live tracking, and role-based access control.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
