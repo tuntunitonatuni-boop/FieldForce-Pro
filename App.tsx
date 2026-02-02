@@ -4,278 +4,176 @@ import Layout from './components/Layout';
 import AttendancePanel from './components/AttendancePanel';
 import LiveMap from './components/LiveMap';
 import Dashboard from './components/Dashboard';
+import ProfilePanel from './components/ProfilePanel';
+import ManagementPanel from './components/ManagementPanel';
 import Auth from './components/Auth';
-import { User, Role } from './types';
-import { getFieldAssistantAdvice } from './services/geminiService';
+import { User, Role, Branch } from './types';
 import { supabase } from './lib/supabase';
+import { getDistance } from './utils';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('attendance');
   const [isTracking, setIsTracking] = useState(false);
-  const [trackingData, setTrackingData] = useState<Record<string, { lat: number, lng: number, lastUpdate: string, name?: string, role?: string }>>({});
+  const [trackingData, setTrackingData] = useState<Record<string, any>>({});
   const [allUsers, setAllUsers] = useState<User[]>([]);
-  const [aiAdvice, setAiAdvice] = useState<string>('');
-  const [isAdviceLoading, setIsAdviceLoading] = useState(false);
+  const [branches, setBranches] = useState<Branch[]>([]);
   
-  const syncIntervalRef = useRef<number | null>(null);
-  const fetchIntervalRef = useRef<number | null>(null);
+  const mapProfileData = (p: any): User => ({
+    id: p.id,
+    name: p.full_name || 'Staff Member',
+    email: p.email || '',
+    username: p.username,
+    role: (p.role as Role) || Role.OFFICER,
+    branch_id: p.branch_id || '',
+    staff_pin: p.staff_pin,
+    target_daily: p.target_daily,
+    target_weekly: p.target_weekly,
+    target_monthly: p.target_monthly,
+    phone_number: p.phone_number,
+    bio: p.bio
+  });
+
+  const fetchData = async () => {
+    try {
+      const { data: bData } = await supabase.from('branches').select('*');
+      setBranches(bData || []);
+      const { data: uData } = await supabase.from('profiles').select('*');
+      if (uData) setAllUsers(uData.map(mapProfileData));
+    } catch (e) {
+      console.error("Data Fetch Error:", e);
+    }
+  };
+
+  const syncUser = async (userId: string) => {
+    const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+    if (profile) {
+      setUser(mapProfileData(profile));
+      fetchData();
+    }
+  };
 
   useEffect(() => {
-    const checkSession = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          const userData: User = {
-            id: session.user.id,
-            email: session.user.email || '',
-            name: session.user.user_metadata?.full_name || 'User',
-            role: (session.user.user_metadata?.role as Role) || Role.OFFICER,
-            branch_id: session.user.user_metadata?.branch_id || 'b1',
-          };
-          setUser(userData);
-          fetchUsers();
-        }
-      } catch (err) {
-        console.error("Auth session check failed", err);
-      } finally {
-        setLoading(false);
-      }
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) await syncUser(session.user.id);
+      setLoading(false);
     };
-
-    checkSession();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setUser({
-          id: session.user.id,
-          email: session.user.email || '',
-          name: session.user.user_metadata?.full_name || 'User',
-          role: (session.user.user_metadata?.role as Role) || Role.OFFICER,
-          branch_id: session.user.user_metadata?.branch_id || 'b1',
-        });
-        fetchUsers();
-      } else {
-        setUser(null);
-        setAllUsers([]);
-      }
+    checkAuth();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) await syncUser(session.user.id);
+      else { setUser(null); setAllUsers([]); setIsTracking(false); }
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
-  const fetchUsers = async () => {
-    try {
-      const { data, error } = await supabase.from('profiles').select('*');
-      if (data && !error) {
-        const formattedUsers = data.map(p => ({
-          id: p.id,
-          name: p.full_name,
-          email: '',
-          role: p.role as Role,
-          branch_id: p.branch_id
-        }));
-        setAllUsers(formattedUsers);
+  // Update Attendance Status when Tracking Changes
+  const toggleTracking = async () => {
+    if (!user) return;
+    const newTrackingState = !isTracking;
+    setIsTracking(newTrackingState);
+
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Get latest location to determine if back at office or on field
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      const branch = branches.find(b => b.id === user.branch_id);
+      let newStatus = 'on-field';
+
+      if (!newTrackingState && branch) {
+        const dist = getDistance(pos.coords.latitude, pos.coords.longitude, branch.lat, branch.lng);
+        if (dist <= (branch.radius || 250)) {
+          newStatus = 'present';
+        }
+      } else if (newTrackingState) {
+        newStatus = 'on-field';
       }
-    } catch (e) {
-      console.warn("Profiles table might not exist yet:", e);
-    }
+
+      await supabase.from('attendance')
+        .update({ status: newStatus })
+        .eq('user_id', user.id)
+        .eq('date', today);
+        
+      fetchData(); // Refresh UI
+    });
   };
 
+  // Location Tracking Interval
   useEffect(() => {
-    if (!user || !isTracking) {
-      if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
-      return;
-    }
-
-    const updateMyLocation = () => {
-      if (!navigator.geolocation) return;
-      
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          try {
-            await supabase.from('movement_logs').insert({
-              user_id: user.id,
-              lat: pos.coords.latitude,
-              lng: pos.coords.longitude,
-            });
-            
-            setTrackingData(prev => ({
-              ...prev,
-              [user.id]: {
-                lat: pos.coords.latitude,
-                lng: pos.coords.longitude,
-                lastUpdate: new Date().toISOString(),
-                name: user.name,
-                role: user.role
-              }
-            }));
-          } catch (e) {
-            console.error("Movement sync failed:", e);
-          }
-        },
-        (err) => console.error("GPS Error:", err),
-        { enableHighAccuracy: true }
-      );
+    if (!user || !isTracking) return;
+    const sendLocation = () => {
+      navigator.geolocation.getCurrentPosition(async (pos) => {
+        try {
+          await supabase.from('movement_logs').insert({ 
+            user_id: user.id, 
+            lat: pos.coords.latitude, 
+            lng: pos.coords.longitude 
+          });
+        } catch (e) { console.error(e); }
+      }, null, { enableHighAccuracy: true });
     };
-
-    updateMyLocation();
-    syncIntervalRef.current = window.setInterval(updateMyLocation, 15000);
-
-    return () => {
-      if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
-    };
+    sendLocation();
+    const interval = window.setInterval(sendLocation, 15000);
+    return () => clearInterval(interval);
   }, [user, isTracking]);
 
+  // Fetch Team Locations
   useEffect(() => {
-    if (!user || (user.role === Role.OFFICER && activeTab !== 'tracking')) return;
-
-    const fetchAllLocations = async () => {
+    if (!user) return;
+    const fetchLocations = async () => {
       try {
-        const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
-        const { data, error } = await supabase
-          .from('movement_logs')
-          .select(`
-            user_id,
-            lat,
-            lng,
-            timestamp
-          `)
-          .gt('timestamp', oneHourAgo)
-          .order('timestamp', { ascending: false });
-
-        if (data && !error) {
-          const latestLocations: any = {};
-          // Note: In a real app, join with profiles. Here we simulate for reliability.
+        const fiveMinsAgo = new Date(Date.now() - 300000).toISOString();
+        const { data } = await supabase.from('movement_logs').select('*').gt('timestamp', fiveMinsAgo).order('timestamp', { ascending: false });
+        if (data) {
+          const latest: any = {};
           data.forEach((log: any) => {
-            if (!latestLocations[log.user_id]) {
+            if (!latest[log.user_id]) {
               const profile = allUsers.find(u => u.id === log.user_id);
-              latestLocations[log.user_id] = {
-                lat: Number(log.lat),
-                lng: Number(log.lng),
-                lastUpdate: log.timestamp,
-                name: profile?.name || 'Staff Member',
-                role: profile?.role || Role.OFFICER,
-                branch_id: profile?.branch_id || 'b1'
-              };
+              if (user.role === Role.BRANCH_ADMIN && profile?.branch_id !== user.branch_id) return;
+              if (user.role === Role.OFFICER && log.user_id !== user.id) return;
+              latest[log.user_id] = { lat: log.lat, lng: log.lng, lastUpdate: log.timestamp, name: profile?.name, role: profile?.role, branch_id: profile?.branch_id };
             }
           });
-          setTrackingData(prev => ({ ...prev, ...latestLocations }));
+          setTrackingData(latest);
         }
-      } catch (e) {
-        console.error("Fetch locations error:", e);
-      }
+      } catch (e) { console.error(e); }
     };
+    fetchLocations();
+    const interval = window.setInterval(fetchLocations, 10000);
+    return () => clearInterval(interval);
+  }, [user, allUsers]);
 
-    fetchAllLocations();
-    fetchIntervalRef.current = window.setInterval(fetchAllLocations, 20000);
+  if (loading) return (
+    <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
+      <div className="w-12 h-12 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin mb-4"></div>
+      <p className="font-bold text-slate-400">FieldForce Pro লোডিং হচ্ছে...</p>
+    </div>
+  );
 
-    return () => {
-      if (fetchIntervalRef.current) clearInterval(fetchIntervalRef.current);
-    };
-  }, [user, activeTab, allUsers]);
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setIsTracking(false);
-  };
-
-  const fetchAIAdvice = async () => {
-    if (!user) return;
-    setIsAdviceLoading(true);
-    const advice = await getFieldAssistantAdvice(user.name, user.role, activeTab);
-    setAiAdvice(advice);
-    setIsAdviceLoading(false);
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-900">
-        <div className="flex flex-col items-center">
-          <div className="w-16 h-16 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin mb-4"></div>
-          <p className="text-white font-medium animate-pulse">লোড হচ্ছে...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <Auth onAuthComplete={() => {}} />;
-  }
+  if (!user) return <Auth onAuthComplete={fetchData} />;
 
   return (
-    <Layout user={user} onLogout={handleLogout} activeTab={activeTab} setActiveTab={setActiveTab}>
-      <div className="max-w-6xl mx-auto h-full flex flex-col">
-        {activeTab === 'attendance' && (
-          <div className="flex-1 flex flex-col items-center justify-center">
-            <AttendancePanel user={user} onAttendanceChange={(a) => console.log('Attendance Logged:', a)} />
-          </div>
-        )}
-
+    <Layout user={user} onLogout={() => supabase.auth.signOut()} activeTab={activeTab} setActiveTab={setActiveTab}>
+      <div className="max-w-6xl mx-auto h-full relative">
+        {activeTab === 'attendance' && <AttendancePanel user={user} branches={branches} onAttendanceChange={fetchData} />}
         {activeTab === 'tracking' && (
-          <div className="flex-1 flex flex-col space-y-4 h-full min-h-[500px] pb-20 md:pb-0">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm gap-4">
-              <div className="flex items-center space-x-4">
-                <div className={`w-3 h-3 rounded-full ${isTracking ? 'bg-green-500 animate-pulse' : 'bg-slate-300'}`}></div>
-                <div>
-                  <h4 className="font-bold text-slate-800 tracking-tight">ট্র্যাকিং স্ট্যাটাস: {isTracking ? 'সক্রিয়' : 'বন্ধ'}</h4>
-                  <p className="text-xs text-slate-500">লাইভ লোকেশন ড্যাশবোর্ড আপডেট হচ্ছে</p>
-                </div>
-              </div>
+          <div className="h-full flex flex-col space-y-4">
+            <div className="bg-white p-4 rounded-2xl border flex justify-between items-center shadow-sm">
+              <h4 className="font-bold text-slate-800">লাইভ লোকেশন (ব্রাঞ্চ: {branches.find(b => b.id === user.branch_id)?.name || 'Default'})</h4>
               <button 
-                onClick={() => setIsTracking(!isTracking)}
-                className={`w-full md:w-auto px-8 py-3 rounded-xl font-bold transition-all ${
-                  isTracking 
-                  ? 'bg-red-50 text-red-600 border border-red-200 hover:bg-red-100' 
-                  : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-100'
-                }`}
+                onClick={toggleTracking} 
+                className={`px-6 py-2 rounded-xl font-bold transition-all shadow-md ${isTracking ? 'bg-red-50 text-red-600 border border-red-100 hover:bg-red-100' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
               >
-                {isTracking ? 'ভিজিট শেষ করুন' : 'ফিল্ড ভিজিট শুরু করুন'}
+                {isTracking ? 'ফিল্ড ভিজিট শেষ' : 'ফিল্ড ভিজিট শুরু'}
               </button>
             </div>
-            <div className="flex-1">
-              <LiveMap users={allUsers} trackingData={trackingData} currentUser={user} />
-            </div>
+            <div className="flex-1"><LiveMap users={allUsers} trackingData={trackingData} currentUser={user} /></div>
           </div>
         )}
-
-        {activeTab === 'dashboard' && <Dashboard currentUser={user} />}
-
-        <div className="fixed right-6 bottom-24 md:bottom-8 z-30">
-          <div className="relative group">
-            {aiAdvice && (
-              <div className="absolute bottom-16 right-0 w-80 bg-white p-5 rounded-2xl shadow-2xl border border-slate-100 mb-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
-                <div className="flex justify-between items-center mb-3">
-                  <h5 className="font-bold text-slate-800 flex items-center">
-                    <span className="mr-2">💡</span>
-                    AI পরামর্শ
-                  </h5>
-                  <button onClick={() => setAiAdvice('')} className="text-slate-400 hover:text-slate-600">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l18 18" /></svg>
-                  </button>
-                </div>
-                <div className="text-sm text-slate-600 leading-relaxed whitespace-pre-line">
-                  {aiAdvice}
-                </div>
-              </div>
-            )}
-            <button 
-              onClick={fetchAIAdvice}
-              disabled={isAdviceLoading}
-              className={`w-14 h-14 rounded-full flex items-center justify-center shadow-2xl transition-all transform hover:scale-110 active:scale-95 ${
-                isAdviceLoading ? 'bg-slate-400' : 'bg-indigo-600 hover:bg-indigo-700'
-              }`}
-            >
-              {isAdviceLoading ? (
-                <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-              ) : (
-                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
-              )}
-            </button>
-          </div>
-        </div>
+        {activeTab === 'dashboard' && <Dashboard currentUser={user} allUsers={allUsers} trackingData={trackingData} branches={branches} />}
+        {activeTab === 'management' && <ManagementPanel currentUser={user} allUsers={allUsers} branches={branches} onRefresh={fetchData} />}
+        {activeTab === 'profile' && <ProfilePanel user={user} branches={branches} onUpdate={(u) => setUser(u)} />}
       </div>
     </Layout>
   );

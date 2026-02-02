@@ -60,19 +60,38 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
       const data = trackingData[userId];
       if (!data) return;
 
-      const markerColor = data.role === Role.SUPER_ADMIN ? 'red' : data.role === Role.BRANCH_ADMIN ? 'orange' : 'blue';
-      const icon = L.divIcon({
-        className: 'custom-div-icon',
-        html: `<div style="background-color: ${markerColor}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.5);"></div>`,
-        iconSize: [12, 12],
-        iconAnchor: [6, 6]
+      const markerColor = data.role === Role.SUPER_ADMIN ? '#ef4444' : data.role === Role.BRANCH_ADMIN ? '#f97316' : '#3b82f6';
+      const initials = (data.name || 'U').charAt(0).toUpperCase();
+      
+      const customIcon = L.divIcon({
+        className: 'custom-user-marker',
+        html: `
+          <div class="marker-pin">
+            <div class="marker-avatar" style="background-color: ${markerColor}">
+              ${initials}
+            </div>
+            <div class="marker-label">
+              ${data.name || 'Unknown'}
+            </div>
+          </div>
+        `,
+        iconSize: [60, 50],
+        iconAnchor: [30, 45]
       });
 
       if (markersRef.current[userId]) {
         markersRef.current[userId].setLatLng([data.lat, data.lng]);
+        // Update content if name changes (unlikely but good for consistency)
+        markersRef.current[userId].setIcon(customIcon);
       } else {
-        const marker = L.marker([data.lat, data.lng], { icon }).addTo(mapRef.current)
-          .bindPopup(`<b>${data.name || 'Unknown'}</b><br>${(data.role || '').replace('_', ' ')}<br><small>শেষ আপডেট: ${new Date(data.lastUpdate).toLocaleTimeString()}</small>`);
+        const marker = L.marker([data.lat, data.lng], { icon: customIcon }).addTo(mapRef.current)
+          .bindPopup(`
+            <div class="p-1">
+              <p class="font-bold text-slate-800">${data.name || 'Unknown'}</p>
+              <p class="text-xs text-slate-500 capitalize">${(data.role || '').replace('_', ' ')}</p>
+              <p class="text-[10px] text-slate-400 mt-1">সর্বশেষ: ${new Date(data.lastUpdate).toLocaleTimeString()}</p>
+            </div>
+          `);
         markersRef.current[userId] = marker;
       }
     });
@@ -84,9 +103,10 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
       }
     });
 
-    if (visibleUserIds.length > 0 && mapRef.current.getZoom() < 12) {
-      const firstId = visibleUserIds[0];
-      mapRef.current.panTo([trackingData[firstId].lat, trackingData[firstId].lng]);
+    // Auto-center on current user if tracking is on and map is fresh
+    if (visibleUserIds.includes(currentUser.id) && Object.keys(markersRef.current).length === 1) {
+      const myData = trackingData[currentUser.id];
+      mapRef.current.setView([myData.lat, myData.lng], 15);
     }
   }, [trackingData, currentUser, isLeafletReady]);
 
@@ -105,20 +125,20 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
       <div className="absolute bottom-4 left-4 z-[1000] bg-white/95 backdrop-blur p-4 rounded-xl shadow-xl text-xs border border-slate-200 min-w-[150px]">
         <h4 className="font-bold mb-3 text-slate-800 border-b border-slate-100 pb-2 flex items-center">
           <span className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></span>
-          লাইভ ম্যাপ
+          লাইভ লোকেশন
         </h4>
         <div className="space-y-2">
           <div className="flex items-center space-x-2">
             <div className="w-3 h-3 rounded-full bg-blue-500 border border-white"></div>
-            <span className="font-medium text-slate-600">Officer</span>
+            <span className="font-medium text-slate-600">অফিসার</span>
           </div>
           <div className="flex items-center space-x-2">
             <div className="w-3 h-3 rounded-full bg-orange-500 border border-white"></div>
-            <span className="font-medium text-slate-600">Admin</span>
+            <span className="font-medium text-slate-600">এডমিন</span>
           </div>
           <div className="flex items-center space-x-2">
             <div className="w-3 h-3 rounded-full bg-red-500 border border-white"></div>
-            <span className="font-medium text-slate-600">Super Admin</span>
+            <span className="font-medium text-slate-600">সুপার এডমিন</span>
           </div>
         </div>
       </div>

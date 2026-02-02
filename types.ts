@@ -8,9 +8,18 @@ export enum Role {
 export interface User {
   id: string;
   email: string;
+  username?: string;
   name: string;
   role: Role;
   branch_id: string;
+  staff_pin?: string;
+  phone_number?: string;
+  avatar_url?: string;
+  bio?: string;
+  join_date?: string;
+  target_daily?: number;
+  target_weekly?: number;
+  target_monthly?: number;
 }
 
 export interface Branch {
@@ -18,7 +27,8 @@ export interface Branch {
   name: string;
   lat: number;
   lng: number;
-  radius: number; // in meters
+  radius: number;
+  target_amount?: number;
 }
 
 export interface Attendance {
@@ -36,10 +46,4 @@ export interface MovementLog {
   lat: number;
   lng: number;
   timestamp: string;
-}
-
-export interface AppState {
-  currentUser: User | null;
-  isTracking: boolean;
-  currentLocation: { lat: number, lng: number } | null;
 }

@@ -3,7 +3,6 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 /**
  * Safely accesses the API key from the environment.
- * The system ensures process.env.API_KEY is available at runtime.
  */
 const getApiKey = () => {
   try {
@@ -13,25 +12,21 @@ const getApiKey = () => {
   }
 };
 
-// Initialize the Gemini client using the required pattern.
-// We wrap it to ensure we don't crash if process is briefly unavailable during hydration.
-const ai = new GoogleGenAI({ apiKey: getApiKey() });
-
 export const getFieldAssistantAdvice = async (userName: string, role: string, locationContext?: string) => {
   const key = getApiKey();
-  if (!key) return "জিপিএস অন রাখুন এবং হাইড্রেটেড থাকুন। (পরিবেশ ভেরিয়েবল পাওয়া যায়নি)";
+  if (!key) return "জিপিএস অন রাখুন এবং হাইড্রেটেড থাকুন। (এপিআই কি পাওয়া যায়নি)";
 
   try {
+    const ai = new GoogleGenAI({ apiKey: key });
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `User ${userName} with role ${role} is asking for field management advice. Current location context: ${locationContext || 'unknown'}. 
       Provide 3 brief, actionable professional tips in Bengali for a field force officer or admin to improve efficiency or safety today.`,
       config: {
         temperature: 0.7,
-        thinkingConfig: { thinkingBudget: 0 }
       }
     });
-    return response.text;
+    return response.text || "মাঠ পর্যায়ে সাবধানে কাজ করুন এবং নিয়মিত আপডেট দিন।";
   } catch (error) {
     console.error("Gemini Error:", error);
     return "মাঠ পর্যায়ে সাবধানে কাজ করুন এবং নিয়মিত আপডেট দিন।";
@@ -40,9 +35,10 @@ export const getFieldAssistantAdvice = async (userName: string, role: string, lo
 
 export const getAttendanceSummaryAI = async (attendanceData: any[]) => {
   const key = getApiKey();
-  if (!key) return { summary: "ডেটা বিশ্লেষণ বর্তমানে অনুপলব্ধ।", punctualityRating: 0 };
+  if (!key) return { summary: "ডেটা বিশ্লেষণ বর্তমানে অনুপলব্ধ। (এপিআই কি নেই)", punctualityRating: 0 };
 
   try {
+    const ai = new GoogleGenAI({ apiKey: key });
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `Analyze this attendance data: ${JSON.stringify(attendanceData)}. 
@@ -59,7 +55,9 @@ export const getAttendanceSummaryAI = async (attendanceData: any[]) => {
         }
       }
     });
-    return JSON.parse(response.text);
+    
+    if (!response.text) throw new Error("Empty response from AI");
+    return JSON.parse(response.text.trim());
   } catch (error) {
     console.error("Gemini Summary Error:", error);
     return { summary: "ডেটা বিশ্লেষণ বর্তমানে অনুপলব্ধ।", punctualityRating: 0 };
