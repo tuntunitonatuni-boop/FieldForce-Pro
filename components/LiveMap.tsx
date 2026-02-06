@@ -8,7 +8,8 @@ interface LiveMapProps {
   currentUser: User;
 }
 
-declare const L: any;
+// Access Leaflet from window object
+const L = (window as any).L;
 
 const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -16,9 +17,10 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
   const markersRef = useRef<Record<string, any>>({});
   const [isLeafletReady, setIsLeafletReady] = useState(false);
 
+  // Check if Leaflet is loaded
   useEffect(() => {
     const checkLeaflet = setInterval(() => {
-      if (typeof L !== 'undefined') {
+      if ((window as any).L) {
         setIsLeafletReady(true);
         clearInterval(checkLeaflet);
       }
@@ -26,14 +28,23 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
     return () => clearInterval(checkLeaflet);
   }, []);
 
+  // Initialize Map
   useEffect(() => {
     if (!mapContainerRef.current || !isLeafletReady || mapRef.current) return;
 
     try {
+      const L = (window as any).L;
       mapRef.current = L.map(mapContainerRef.current).setView([23.8103, 90.4125], 10);
+      
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors'
       }).addTo(mapRef.current);
+
+      // Fix for map not rendering correctly in some hidden/flex containers
+      setTimeout(() => {
+        if (mapRef.current) mapRef.current.invalidateSize();
+      }, 500);
+
     } catch (e) {
       console.error("Map init error:", e);
     }
@@ -46,8 +57,10 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
     };
   }, [isLeafletReady]);
 
+  // Handle Markers
   useEffect(() => {
     if (!mapRef.current || !isLeafletReady) return;
+    const L = (window as any).L;
 
     const visibleUserIds = Object.keys(trackingData).filter(userId => {
       const data = trackingData[userId];
@@ -81,7 +94,6 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
 
       if (markersRef.current[userId]) {
         markersRef.current[userId].setLatLng([data.lat, data.lng]);
-        // Update content if name changes (unlikely but good for consistency)
         markersRef.current[userId].setIcon(customIcon);
       } else {
         const marker = L.marker([data.lat, data.lng], { icon: customIcon }).addTo(mapRef.current)
@@ -96,6 +108,7 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
       }
     });
 
+    // Remove old markers
     Object.keys(markersRef.current).forEach(id => {
       if (!visibleUserIds.includes(id)) {
         markersRef.current[id].remove();
@@ -103,42 +116,47 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
       }
     });
 
-    // Auto-center on current user if tracking is on and map is fresh
+    // Auto-center logic
     if (visibleUserIds.includes(currentUser.id) && Object.keys(markersRef.current).length === 1) {
       const myData = trackingData[currentUser.id];
-      mapRef.current.setView([myData.lat, myData.lng], 15);
+      // Only flyTo if distance is significant to avoid jitter
+      mapRef.current.flyTo([myData.lat, myData.lng], 15, { animate: true, duration: 1 });
     }
+    
+    // Refresh size occasionally
+    mapRef.current.invalidateSize();
+
   }, [trackingData, currentUser, isLeafletReady]);
 
   if (!isLeafletReady) {
     return (
-      <div className="h-full flex items-center justify-center bg-slate-100 rounded-2xl border border-slate-200">
-        <p className="text-slate-500 font-medium">ম্যাপ লোড হচ্ছে...</p>
+      <div className="h-full w-full flex items-center justify-center bg-slate-100 rounded-2xl">
+        <p className="text-slate-500 font-medium animate-pulse">ম্যাপ লোড হচ্ছে...</p>
       </div>
     );
   }
 
   return (
-    <div className="h-full relative overflow-hidden rounded-2xl shadow-inner border border-slate-200">
-      <div ref={mapContainerRef} className="absolute inset-0 z-0" />
+    <div className="h-full w-full relative">
+      <div ref={mapContainerRef} className="absolute inset-0 z-0 bg-slate-100" />
       
-      <div className="absolute bottom-4 left-4 z-[1000] bg-white/95 backdrop-blur p-4 rounded-xl shadow-xl text-xs border border-slate-200 min-w-[150px]">
-        <h4 className="font-bold mb-3 text-slate-800 border-b border-slate-100 pb-2 flex items-center">
+      <div className="absolute bottom-4 left-4 z-[500] bg-white/95 backdrop-blur p-3 rounded-xl shadow-xl text-xs border border-slate-200 min-w-[140px]">
+        <h4 className="font-bold mb-2 text-slate-800 border-b border-slate-100 pb-1 flex items-center">
           <span className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></span>
           লাইভ লোকেশন
         </h4>
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <div className="flex items-center space-x-2">
-            <div className="w-3 h-3 rounded-full bg-blue-500 border border-white"></div>
-            <span className="font-medium text-slate-600">অফিসার</span>
+            <div className="w-2.5 h-2.5 rounded-full bg-blue-500 border border-white shadow-sm"></div>
+            <span className="font-bold text-[10px] text-slate-600">অফিসার</span>
           </div>
           <div className="flex items-center space-x-2">
-            <div className="w-3 h-3 rounded-full bg-orange-500 border border-white"></div>
-            <span className="font-medium text-slate-600">এডমিন</span>
+            <div className="w-2.5 h-2.5 rounded-full bg-orange-500 border border-white shadow-sm"></div>
+            <span className="font-bold text-[10px] text-slate-600">এডমিন</span>
           </div>
           <div className="flex items-center space-x-2">
-            <div className="w-3 h-3 rounded-full bg-red-500 border border-white"></div>
-            <span className="font-medium text-slate-600">সুপার এডমিন</span>
+            <div className="w-2.5 h-2.5 rounded-full bg-red-500 border border-white shadow-sm"></div>
+            <span className="font-bold text-[10px] text-slate-600">সুপার এডমিন</span>
           </div>
         </div>
       </div>
