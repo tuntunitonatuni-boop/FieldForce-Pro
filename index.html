@@ -7,8 +7,10 @@
     <meta name="theme-color" content="#ffffff">
     <title>FieldForce Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" integrity="sha512-Zcn6bjR/8RZbLEpLIeOwNtzREBAJnUKESxces60Mpoj+2okopSA8GVNECkPe3gAck22K8p7S0tSa5ChJTB8pMA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha512-BwHfrr4c9kmRkLw6iXFdzcdWV/PGkVgiIyIWLLlTSXzWQzxuSg4DiQUCpauz/EWjgk5TYQqX/kvn9pG1NpYfqg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <!-- Leaflet CSS - Removed integrity check to avoid Vercel/CDN issues -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" referrerpolicy="no-referrer" />
+    <!-- Leaflet JS - Removed integrity check -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" referrerpolicy="no-referrer"></script>
     <style>
       html, body, #root {
         height: 100%;
@@ -22,6 +24,18 @@
         border-radius: 1rem;
         z-index: 1;
       }
+      
+      /* CRITICAL FIX: Override Tailwind's img reset which breaks Leaflet tiles */
+      .leaflet-pane img,
+      .leaflet-tile, 
+      .leaflet-marker-icon, 
+      .leaflet-marker-shadow {
+        max-width: none !important;
+        max-height: none !important;
+        width: auto;
+        padding: 0;
+      }
+
       /* Custom Marker Styles */
       .custom-user-marker {
         background: transparent;
