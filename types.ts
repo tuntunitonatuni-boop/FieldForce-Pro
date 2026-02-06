@@ -2,7 +2,8 @@
 export enum Role {
   SUPER_ADMIN = 'super_admin',
   BRANCH_ADMIN = 'branch_admin',
-  OFFICER = 'officer'
+  OFFICER = 'officer',
+  DRIVER = 'driver'
 }
 
 export interface User {
@@ -31,6 +32,12 @@ export interface Branch {
   target_amount?: number;
 }
 
+export interface Vehicle {
+  id: string;
+  name: string; // e.g., "Premio 18-0086"
+  type: 'car' | 'motorcycle' | 'other';
+}
+
 export interface Attendance {
   id: string;
   user_id: string;
@@ -46,4 +53,19 @@ export interface MovementLog {
   lat: number;
   lng: number;
   timestamp: string;
+}
+
+export interface Expense {
+  id: string;
+  user_id: string;
+  vehicle_id?: string; // Link to specific car
+  type: 'fuel' | 'maintenance' | 'toll' | 'motorcycle_bill' | 'cooking_gas' | 'other';
+  fuel_type?: 'lpg' | 'petrol' | 'octane' | 'diesel' | '99' | null;
+  amount: number;
+  quantity?: number; // measurement (litres/kg)
+  odometer?: number;
+  voucher_url?: string;
+  description?: string;
+  date: string;
+  created_at: string;
 }

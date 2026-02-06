@@ -14,9 +14,11 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout, activeTab, setActiveTab
   const isSuperAdmin = user.role === Role.SUPER_ADMIN;
   const isBranchAdmin = user.role === Role.BRANCH_ADMIN;
   const isOfficer = user.role === Role.OFFICER;
+  const isDriver = user.role === Role.DRIVER;
 
   const getRoleLabel = (role: Role) => {
     if (role === Role.OFFICER) return "Credit Officer";
+    if (role === Role.DRIVER) return "Driver";
     return role.replace('_', ' ');
   };
 
@@ -33,19 +35,25 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout, activeTab, setActiveTab
         </div>
         
         <nav className="flex-1 px-4 space-y-1.5">
-          <SidebarItem 
-            active={activeTab === 'attendance'} 
-            onClick={() => setActiveTab('attendance')}
-            icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
-            label="Attendance"
-          />
-          <SidebarItem 
-            active={activeTab === 'tracking'} 
-            onClick={() => setActiveTab('tracking')}
-            icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
-            label="Field Visit"
-          />
-          {!isOfficer && (
+          {!isDriver && (
+            <SidebarItem 
+              active={activeTab === 'attendance'} 
+              onClick={() => setActiveTab('attendance')}
+              icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+              label="Attendance"
+            />
+          )}
+          
+          {!isDriver && (
+            <SidebarItem 
+              active={activeTab === 'tracking'} 
+              onClick={() => setActiveTab('tracking')}
+              icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
+              label="Field Visit"
+            />
+          )}
+
+          {!isOfficer && !isDriver && (
             <SidebarItem 
               active={activeTab === 'dashboard'} 
               onClick={() => setActiveTab('dashboard')}
@@ -53,6 +61,16 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout, activeTab, setActiveTab
               label="Insights"
             />
           )}
+
+          {(isSuperAdmin || isBranchAdmin || isDriver) && (
+             <SidebarItem 
+             active={activeTab === 'expenses'} 
+             onClick={() => setActiveTab('expenses')}
+             icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+             label="Car Expenses"
+           />
+          )}
+
           {(isSuperAdmin || isBranchAdmin) && (
             <SidebarItem 
               active={activeTab === 'management'} 
@@ -101,9 +119,9 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout, activeTab, setActiveTab
       </main>
 
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 h-20 flex items-center justify-around z-20 pb-safe shadow-2xl">
-        <MobileNavItem active={activeTab === 'attendance'} onClick={() => setActiveTab('attendance')} label="Clock" icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} />
-        <MobileNavItem active={activeTab === 'tracking'} onClick={() => setActiveTab('tracking')} label="Field" icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>} />
-        {!isOfficer && <MobileNavItem active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} label="Admin" icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2z" /></svg>} />}
+        {!isDriver && <MobileNavItem active={activeTab === 'attendance'} onClick={() => setActiveTab('attendance')} label="Clock" icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} />}
+        {(isSuperAdmin || isDriver) && <MobileNavItem active={activeTab === 'expenses'} onClick={() => setActiveTab('expenses')} label="Expense" icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} />}
+        {!isOfficer && !isDriver && <MobileNavItem active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} label="Admin" icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2z" /></svg>} />}
         <MobileNavItem active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} label="Me" icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>} />
       </nav>
     </div>

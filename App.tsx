@@ -6,6 +6,7 @@ import LiveMap from './components/LiveMap';
 import Dashboard from './components/Dashboard';
 import ProfilePanel from './components/ProfilePanel';
 import ManagementPanel from './components/ManagementPanel';
+import ExpensePanel from './components/ExpensePanel';
 import Auth from './components/Auth';
 import { User, Role, Branch } from './types';
 import { supabase } from './lib/supabase';
@@ -49,7 +50,10 @@ const App: React.FC = () => {
   const syncUser = async (userId: string) => {
     const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
     if (profile) {
-      setUser(mapProfileData(profile));
+      const mappedUser = mapProfileData(profile);
+      setUser(mappedUser);
+      // Set default tab for driver
+      if (mappedUser.role === Role.DRIVER) setActiveTab('expenses');
       fetchData();
     }
   };
@@ -132,6 +136,7 @@ const App: React.FC = () => {
               const profile = allUsers.find(u => u.id === log.user_id);
               if (user.role === Role.BRANCH_ADMIN && profile?.branch_id !== user.branch_id) return;
               if (user.role === Role.OFFICER && log.user_id !== user.id) return;
+              // Drivers usually don't need tracking unless specified, but we can leave it
               latest[log.user_id] = { lat: log.lat, lng: log.lng, lastUpdate: log.timestamp, name: profile?.name, role: profile?.role, branch_id: profile?.branch_id };
             }
           });
@@ -171,6 +176,7 @@ const App: React.FC = () => {
             <div className="flex-1"><LiveMap users={allUsers} trackingData={trackingData} currentUser={user} /></div>
           </div>
         )}
+        {activeTab === 'expenses' && <ExpensePanel currentUser={user} allUsers={allUsers} />}
         {activeTab === 'dashboard' && <Dashboard currentUser={user} allUsers={allUsers} trackingData={trackingData} branches={branches} />}
         {activeTab === 'management' && <ManagementPanel currentUser={user} allUsers={allUsers} branches={branches} onRefresh={fetchData} />}
         {activeTab === 'profile' && <ProfilePanel user={user} branches={branches} onUpdate={(u) => setUser(u)} />}

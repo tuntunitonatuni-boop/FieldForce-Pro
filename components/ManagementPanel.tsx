@@ -11,7 +11,7 @@ interface ManagementPanelProps {
 }
 
 const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers, branches, onRefresh }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'branches' | 'admins' | 'officers'>('officers');
+  const [activeSubTab, setActiveSubTab] = useState<'branches' | 'admins' | 'officers' | 'drivers'>('officers');
   const [loading, setLoading] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [userTargets, setUserTargets] = useState({ daily: 0, weekly: 0, monthly: 0 });
@@ -30,8 +30,8 @@ const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers
   const isSuperAdmin = currentUser.role === Role.SUPER_ADMIN;
   const isBranchAdmin = currentUser.role === Role.BRANCH_ADMIN;
 
-  // STRICT DATA FILTERING: Ensuring no cross-branch visibility
   const branchAdmins = isSuperAdmin ? allUsers.filter(u => u.role === Role.BRANCH_ADMIN) : [];
+  const drivers = isSuperAdmin ? allUsers.filter(u => u.role === Role.DRIVER) : [];
   
   const creditOfficers = allUsers.filter(u => {
     if (isSuperAdmin) return u.role === Role.OFFICER;
@@ -100,7 +100,7 @@ const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers
       
       if (error) throw error;
       
-      alert(`সফলভাবে ${targetRole === Role.OFFICER ? 'ক্রেডিট অফিসার' : 'ব্রাঞ্চ এডমিন'} তৈরি হয়েছে!`);
+      alert(`সফলভাবে ইউজার তৈরি হয়েছে!`);
       setShowAddForm(false);
       setNewUser({ 
         email: '', username: '', password: '', name: '', pin: '', 
@@ -114,27 +114,19 @@ const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers
 
   const handleDeleteUser = async (userId: string, userName: string) => {
     if (userId === currentUser.id) return alert("আপনি নিজেকে সরাতে পারবেন না।");
-    if (!confirm(`আপনি কি নিশ্চিতভাবে ${userName}-কে সরাতে চান? এটি ওই ইউজারের হাজিরা ও লোকেশন ডাটাও মুছে ফেলার চেষ্টা করবে।`)) return;
+    if (!confirm(`আপনি কি নিশ্চিতভাবে ${userName}-কে সরাতে চান?`)) return;
     
     setLoading(true);
     try {
-      // 1. Delete dependent data first to satisfy foreign key constraints
       await supabase.from('movement_logs').delete().eq('user_id', userId);
       await supabase.from('attendance').delete().eq('user_id', userId);
-      
-      // 2. Delete the profile
       const { error } = await supabase.from('profiles').delete().eq('id', userId);
       
-      if (error) {
-        console.error("Delete Profile Error:", error);
-        throw new Error(error.message || "প্রোফাইল মোছা সম্ভব হয়নি।");
-      }
+      if (error) throw new Error(error.message);
       
       alert(`${userName}-এর ডাটা সফলভাবে মুছে ফেলা হয়েছে।`);
       onRefresh();
-    } catch (e: any) { 
-      alert("ত্রুটি: " + e.message + "\n\nনোট: যদি ইউজারটি এখনো লিস্টে থাকে, তবে হয়তো আপনার ডিলেট করার পারমিশন নেই অথবা ডাটাবেস লেভেলে কড়াকড়ি আরোপ করা আছে।"); 
-    }
+    } catch (e: any) { alert("ত্রুটি: " + e.message); }
     setLoading(false);
   };
 
@@ -154,19 +146,24 @@ const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers
     setLoading(false);
   };
 
+  // Helper to get list based on tab
+  const getList = () => {
+    switch(activeSubTab) {
+      case 'admins': return branchAdmins;
+      case 'drivers': return drivers;
+      default: return creditOfficers;
+    }
+  };
+
   return (
     <div className="space-y-8 pb-24">
-      {/* Sub-Navigation: Restricted for Branch Admins */}
+      {/* Sub-Navigation */}
       <div className="flex space-x-6 border-b border-slate-200 overflow-x-auto">
-        <button 
-          onClick={() => setActiveSubTab('officers')} 
-          className={`pb-4 px-2 whitespace-nowrap font-black text-xs uppercase tracking-widest transition-all ${activeSubTab === 'officers' ? 'border-b-4 border-blue-600 text-blue-600' : 'text-slate-400'}`}
-        >
-          {isBranchAdmin ? 'আমার ব্রাঞ্চের অফিসাররা' : 'সকল ক্রেডিট অফিসার'}
-        </button>
+        <button onClick={() => setActiveSubTab('officers')} className={`pb-4 px-2 whitespace-nowrap font-black text-xs uppercase tracking-widest transition-all ${activeSubTab === 'officers' ? 'border-b-4 border-blue-600 text-blue-600' : 'text-slate-400'}`}>{isBranchAdmin ? 'আমার অফিসাররা' : 'ক্রেডিট অফিসার'}</button>
         {isSuperAdmin && (
           <>
-            <button onClick={() => setActiveSubTab('admins')} className={`pb-4 px-2 whitespace-nowrap font-black text-xs uppercase tracking-widest transition-all ${activeSubTab === 'admins' ? 'border-b-4 border-blue-600 text-blue-600' : 'text-slate-400'}`}>ব্রাঞ্চ এডমিন লিস্ট</button>
+            <button onClick={() => setActiveSubTab('admins')} className={`pb-4 px-2 whitespace-nowrap font-black text-xs uppercase tracking-widest transition-all ${activeSubTab === 'admins' ? 'border-b-4 border-blue-600 text-blue-600' : 'text-slate-400'}`}>ব্রাঞ্চ এডমিন</button>
+            <button onClick={() => setActiveSubTab('drivers')} className={`pb-4 px-2 whitespace-nowrap font-black text-xs uppercase tracking-widest transition-all ${activeSubTab === 'drivers' ? 'border-b-4 border-blue-600 text-blue-600' : 'text-slate-400'}`}>ড্রাইভার</button>
             <button onClick={() => setActiveSubTab('branches')} className={`pb-4 px-2 whitespace-nowrap font-black text-xs uppercase tracking-widest transition-all ${activeSubTab === 'branches' ? 'border-b-4 border-blue-600 text-blue-600' : 'text-slate-400'}`}>ব্রাঞ্চ ম্যানেজমেন্ট</button>
           </>
         )}
@@ -211,31 +208,27 @@ const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers
         </div>
       )}
 
-      {/* USER LIST - Filtered for Branch Admins */}
-      {(activeSubTab === 'officers' || activeSubTab === 'admins') && (
+      {/* USER LISTS */}
+      {activeSubTab !== 'branches' && (
         <div className="space-y-8 animate-in fade-in duration-500">
           <div className="flex justify-between items-center">
             <div>
-              <h4 className="text-xl font-black text-slate-800 tracking-tight capitalize">
-                {activeSubTab === 'officers' ? (isBranchAdmin ? 'আমার অফিসাররা' : 'ক্রেডিট অফিসার লিস্ট') : 'ব্রাঞ্চ এডমিন লিস্ট'}
-              </h4>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">
-                মোট: {activeSubTab === 'officers' ? creditOfficers.length : branchAdmins.length} জন
-              </p>
+              <h4 className="text-xl font-black text-slate-800 tracking-tight capitalize">{activeSubTab} List</h4>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">মোট: {getList().length} জন</p>
             </div>
             {(isSuperAdmin || (isBranchAdmin && activeSubTab === 'officers')) && (
               <button 
                 onClick={() => setShowAddForm(!showAddForm)}
                 className={`px-6 py-3 rounded-2xl font-black text-sm transition-all shadow-lg ${showAddForm ? 'bg-slate-100 text-slate-600' : 'bg-green-600 text-white shadow-green-100 hover:bg-green-700'}`}
               >
-                {showAddForm ? 'বাতিল করুন' : `+ নতুন ${activeSubTab === 'officers' ? 'অফিসার' : 'এডমিন'} যোগ`}
+                {showAddForm ? 'বাতিল করুন' : `+ নতুন ${activeSubTab.slice(0, -1)}`}
               </button>
             )}
           </div>
 
           {showAddForm && (
             <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-2xl animate-in slide-in-from-top duration-300">
-              <h5 className="font-black text-slate-800 mb-6 uppercase text-[10px] tracking-widest border-b border-slate-50 pb-4">অ্যাকাউন্ট ইনফরমেশন</h5>
+              <h5 className="font-black text-slate-800 mb-6 uppercase text-[10px] tracking-widest">অ্যাকাউন্ট ইনফরমেশন</h5>
               <form onSubmit={handleCreateUser} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <input type="text" placeholder="পুরো নাম" required value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none font-bold" />
                 <input type="text" placeholder="ইউজারনেম" required value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none font-bold" />
@@ -247,6 +240,7 @@ const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers
                     <select value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value as Role})} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 font-bold">
                       <option value={Role.OFFICER}>Credit Officer</option>
                       <option value={Role.BRANCH_ADMIN}>Branch Admin</option>
+                      <option value={Role.DRIVER}>Driver</option>
                     </select>
                     <select value={newUser.branch_id} onChange={e => setNewUser({...newUser, branch_id: e.target.value})} required className="p-4 bg-slate-50 rounded-2xl border border-slate-100 font-bold">
                       <option value="">ব্রাঞ্চ নির্বাচন করুন</option>
@@ -257,11 +251,8 @@ const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers
 
                 <div className="lg:col-span-3 pt-4">
                   <button type="submit" disabled={loading} className="w-full md:w-auto px-12 py-4 bg-blue-600 text-white rounded-2xl font-black shadow-xl hover:bg-blue-700 transition-all">
-                    {loading ? (
-                      <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    ) : 'অ্যাকাউন্ট তৈরি করুন'}
+                    {loading ? 'অপেক্ষা করুন...' : 'অ্যাকাউন্ট তৈরি করুন'}
                   </button>
-                  {isBranchAdmin && <p className="text-[9px] font-bold text-slate-400 mt-3 uppercase tracking-widest">নতুন ইউজারটি অটোমেটিক আপনার ব্রাঞ্চে ({branches.find(b => b.id === currentUser.branch_id)?.name}) যুক্ত হবে।</p>}
                 </div>
               </form>
             </div>
@@ -270,10 +261,10 @@ const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers
           <div className="bg-white rounded-[2rem] border border-slate-100 shadow-xl overflow-hidden overflow-x-auto">
             <table className="w-full text-left">
               <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">
-                <tr><th className="px-8 py-5">Employee</th><th className="px-8 py-5">Branch</th><th className="px-8 py-5">Performance</th><th className="px-8 py-5 text-right">Action</th></tr>
+                <tr><th className="px-8 py-5">Name</th><th className="px-8 py-5">Role</th><th className="px-8 py-5 text-right">Action</th></tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {(activeSubTab === 'officers' ? creditOfficers : branchAdmins).map(u => (
+                {getList().map(u => (
                   <tr key={u.id} className="hover:bg-slate-50 group">
                     <td className="px-8 py-5">
                       <div className="flex items-center space-x-3">
@@ -285,18 +276,7 @@ const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers
                       </div>
                     </td>
                     <td className="px-8 py-5 text-xs font-bold text-slate-500 uppercase tracking-widest">
-                      {branches.find(b => b.id === u.branch_id)?.name || 'N/A'}
-                    </td>
-                    <td className="px-8 py-5">
-                      <div className="flex items-center space-x-2">
-                        <span className="font-black text-slate-800">৳{u.target_monthly?.toLocaleString() || 0}</span>
-                        <button onClick={() => {
-                          setEditingUserId(u.id);
-                          setUserTargets({ daily: u.target_daily || 0, weekly: u.target_weekly || 0, monthly: u.target_monthly || 0 });
-                        }} className="w-6 h-6 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400">
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                        </button>
-                      </div>
+                      {u.role.replace('_', ' ')}
                     </td>
                     <td className="px-8 py-5 text-right">
                       {u.id !== currentUser.id && (
@@ -313,23 +293,6 @@ const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers
                 ))}
               </tbody>
             </table>
-          </div>
-        </div>
-      )}
-
-      {/* Target Edit Modal */}
-      {editingUserId && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-10 shadow-2xl">
-            <h4 className="text-xl font-black text-slate-900 text-center mb-8">টার্গেট এডিট</h4>
-            <div className="space-y-4">
-              <input type="number" placeholder="Daily" value={userTargets.daily || ''} onChange={e => setUserTargets({...userTargets, daily: Number(e.target.value)})} className="w-full p-4 bg-slate-50 rounded-2xl border font-black outline-none" />
-              <input type="number" placeholder="Monthly" value={userTargets.monthly || ''} onChange={e => setUserTargets({...userTargets, monthly: Number(e.target.value)})} className="w-full p-4 bg-slate-50 rounded-2xl border font-black outline-none" />
-              <div className="flex gap-4 pt-4">
-                <button onClick={() => setEditingUserId(null)} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all">বাতিল</button>
-                <button onClick={() => handleUpdateTarget(editingUserId)} className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl transition-all">আপডেট</button>
-              </div>
-            </div>
           </div>
         </div>
       )}
