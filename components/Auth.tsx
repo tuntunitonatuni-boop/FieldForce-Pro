@@ -150,17 +150,22 @@ const Auth: React.FC<AuthProps> = ({ onAuthComplete }) => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-900 px-4 py-12 font-sans">
-      <div className="max-w-md w-full bg-white rounded-[2.5rem] p-8 md:p-10 shadow-2xl border border-slate-100">
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-blue-50 rounded-3xl mb-6 shadow-inner">
-            <svg className="w-10 h-10 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+    <div className="min-h-screen flex items-center justify-center bg-slate-900 relative overflow-hidden font-sans">
+      {/* Dynamic Background */}
+      <div className="absolute inset-0 bg-gradient-to-br from-blue-900 to-slate-900 z-0"></div>
+      <div className="absolute -top-40 -left-40 w-96 h-96 bg-blue-600/30 rounded-full blur-3xl animate-pulse"></div>
+      <div className="absolute bottom-0 right-0 w-80 h-80 bg-purple-600/20 rounded-full blur-3xl"></div>
+
+      <div className="max-w-md w-full bg-white/95 backdrop-blur-xl rounded-[2.5rem] p-8 md:p-10 shadow-2xl border border-white/20 relative z-10 m-4">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-3xl mb-6 shadow-lg shadow-blue-500/30 transform hover:rotate-3 transition-transform">
+            <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
           </div>
-          <h1 className="text-4xl font-black text-slate-900 tracking-tight">
+          <h1 className="text-3xl font-black text-slate-800 tracking-tight">
             FieldForce <span className="text-blue-600">Pro</span>
           </h1>
-          <p className="text-slate-400 mt-2 font-bold uppercase text-[10px] tracking-[0.2em]">
-            {isFirstRun ? 'প্রথম সেটআপ ও রেজিস্ট্রেশন' : (isLogin ? 'সিকিউর লগইন' : 'নতুন আইডি তৈরি করুন')}
+          <p className="text-slate-500 mt-2 font-bold uppercase text-[10px] tracking-[0.2em]">
+            {isFirstRun ? 'Setup & Registration' : (isLogin ? 'Secure Access' : 'Create Account')}
           </p>
         </div>
 
@@ -171,66 +176,59 @@ const Auth: React.FC<AuthProps> = ({ onAuthComplete }) => {
           </div>
         )}
 
-        {isFirstRun && !error && (
-          <div className="mb-6 p-4 bg-blue-50 text-blue-700 rounded-2xl text-xs font-bold border border-blue-100 text-center">
-            স্বাগতম! আপনার সিস্টেমে কোনো ব্রাঞ্চ নেই। নিচে আপনার প্রথম ব্রাঞ্চ এবং সুপার এডমিন একাউন্ট তৈরি করুন।
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-4">
           {isLogin ? (
-            <div className="space-y-5">
-              <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">ইউজারনেম অথবা ইমেইল</label>
+            <div className="space-y-4">
+              <div className="group">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Username / Email</label>
                 <input
                   type="text"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
-                  placeholder="Username or Email"
+                  placeholder="Enter your ID"
                   required
-                  className="w-full px-6 py-4 rounded-2xl border border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all outline-none font-bold text-slate-800"
+                  className="w-full px-6 py-4 rounded-2xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all outline-none font-bold text-slate-800 placeholder:text-slate-300"
                 />
               </div>
-              <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">পাসওয়ার্ড</label>
+              <div className="group">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Password</label>
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  className="w-full px-6 py-4 rounded-2xl border border-slate-200 focus:border-blue-500 transition-all outline-none font-bold"
+                  className="w-full px-6 py-4 rounded-2xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all outline-none font-bold text-slate-800 placeholder:text-slate-300"
                 />
               </div>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {!isFirstRun && (
-                <div className="grid grid-cols-3 gap-2 p-1 bg-slate-100 rounded-2xl">
-                  <button type="button" onClick={() => setRole(Role.OFFICER)} className={`py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${role === Role.OFFICER ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>Officer</button>
-                  <button type="button" onClick={() => setRole(Role.BRANCH_ADMIN)} className={`py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${role === Role.BRANCH_ADMIN ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>Admin</button>
-                  <button type="button" onClick={() => setRole(Role.SUPER_ADMIN)} className={`py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${role === Role.SUPER_ADMIN ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>Super</button>
+                <div className="grid grid-cols-3 gap-2 p-1 bg-slate-100 rounded-2xl mb-2">
+                  <button type="button" onClick={() => setRole(Role.OFFICER)} className={`py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${role === Role.OFFICER ? 'bg-white text-blue-600 shadow-sm scale-100' : 'text-slate-400 scale-95'}`}>Officer</button>
+                  <button type="button" onClick={() => setRole(Role.BRANCH_ADMIN)} className={`py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${role === Role.BRANCH_ADMIN ? 'bg-white text-blue-600 shadow-sm scale-100' : 'text-slate-400 scale-95'}`}>Admin</button>
+                  <button type="button" onClick={() => setRole(Role.SUPER_ADMIN)} className={`py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${role === Role.SUPER_ADMIN ? 'bg-white text-blue-600 shadow-sm scale-100' : 'text-slate-400 scale-95'}`}>Super</button>
                 </div>
               )}
               
-              <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="পুরো নাম" required className="w-full px-6 py-4 rounded-2xl border border-slate-200 focus:border-blue-500 transition-all outline-none font-bold" />
-              <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="ইউজারনেম (স্পেস ছাড়া)" required className="w-full px-6 py-4 rounded-2xl border border-slate-200 focus:border-blue-500 transition-all outline-none font-bold" />
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="ইমেইল এড্রেস" required className="w-full px-6 py-4 rounded-2xl border border-slate-200 focus:border-blue-500 transition-all outline-none font-bold" />
+              <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Full Name" required className="w-full px-6 py-4 rounded-2xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 outline-none font-bold" />
+              <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username (No Spaces)" required className="w-full px-6 py-4 rounded-2xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 outline-none font-bold" />
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email Address" required className="w-full px-6 py-4 rounded-2xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 outline-none font-bold" />
               
               <div className="pt-2">
                 <div className="flex justify-between items-center mb-2 px-1">
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    {isFirstRun || isCreatingBranch ? 'নতুন ব্রাঞ্চের নাম' : 'ব্রাঞ্চ নির্বাচন করুন'}
+                    {isFirstRun || isCreatingBranch ? 'Branch Name' : 'Select Branch'}
                   </label>
                   
-                  {/* Allow Admins to toggle between Select and Create */}
                   {!isFirstRun && (role === Role.SUPER_ADMIN || role === Role.BRANCH_ADMIN) && (
                     <button 
                       type="button" 
                       onClick={() => setIsCreatingBranch(!isCreatingBranch)} 
-                      className="text-[9px] font-black text-blue-600 hover:text-blue-800 uppercase tracking-widest hover:underline"
+                      className="text-[9px] font-black text-blue-600 uppercase tracking-widest"
                     >
-                      {isCreatingBranch ? 'তালিকায় ফিরে যান' : '+ নতুন ব্রাঞ্চ'}
+                      {isCreatingBranch ? 'Cancel' : '+ New'}
                     </button>
                   )}
                 </div>
@@ -240,26 +238,25 @@ const Auth: React.FC<AuthProps> = ({ onAuthComplete }) => {
                     type="text"
                     value={newBranchName}
                     onChange={(e) => setNewBranchName(e.target.value)}
-                    placeholder="ব্রাঞ্চের নাম (যেমন: Head Office)"
+                    placeholder="e.g. Head Office"
                     required
-                    className="w-full px-6 py-4 rounded-2xl border border-blue-200 bg-blue-50 focus:border-blue-500 transition-all outline-none font-bold text-blue-800"
+                    className="w-full px-6 py-4 rounded-2xl border border-blue-200 bg-blue-50 focus:border-blue-500 outline-none font-bold text-blue-800"
                   />
                 ) : (
-                  <select 
-                    value={selectedBranch} 
-                    onChange={(e) => setSelectedBranch(e.target.value)} 
-                    className="w-full px-6 py-4 rounded-2xl border border-slate-200 focus:border-blue-500 transition-all outline-none font-bold bg-white"
-                    required
-                  >
-                    <option value="">ব্রাঞ্চ নির্বাচন করুন</option>
-                    {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                  </select>
-                )}
-                
-                {branches.length === 0 && !isFirstRun && !isCreatingBranch && (
-                   <p className="text-[10px] text-red-500 font-bold mt-2 px-1">
-                     কোনো ব্রাঞ্চ পাওয়া যায়নি। দয়া করে "সুপার" রোল সিলেক্ট করে নতুন ব্রাঞ্চ তৈরি করুন।
-                   </p>
+                  <div className="relative">
+                    <select 
+                      value={selectedBranch} 
+                      onChange={(e) => setSelectedBranch(e.target.value)} 
+                      className="w-full px-6 py-4 rounded-2xl border border-slate-200 focus:border-blue-500 outline-none font-bold bg-slate-50 appearance-none"
+                      required
+                    >
+                      <option value="">Select a Branch...</option>
+                      {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </select>
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                    </div>
+                  </div>
                 )}
               </div>
 
@@ -267,10 +264,10 @@ const Auth: React.FC<AuthProps> = ({ onAuthComplete }) => {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="পাসওয়ার্ড (কমপক্ষে ৬ ডিজিট)"
+                placeholder="Password (Min 6 chars)"
                 required
                 minLength={6}
-                className="w-full px-6 py-4 rounded-2xl border border-slate-200 focus:border-blue-500 transition-all outline-none font-bold"
+                className="w-full px-6 py-4 rounded-2xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 outline-none font-bold"
               />
             </div>
           )}
@@ -278,26 +275,25 @@ const Auth: React.FC<AuthProps> = ({ onAuthComplete }) => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black text-lg shadow-2xl shadow-blue-200 transition-all flex items-center justify-center disabled:opacity-50"
+            className="w-full py-4 mt-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl font-black text-lg shadow-xl shadow-blue-500/30 transition-all active:scale-95 flex items-center justify-center disabled:opacity-50 disabled:scale-100"
           >
             {loading ? (
-              <div className="w-7 h-7 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
-            ) : isLogin ? 'লগইন' : 'অ্যাকাউন্ট তৈরি করুন'}
+              <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
+            ) : isLogin ? 'Sign In' : 'Register Account'}
           </button>
         </form>
 
         {!isFirstRun && (
-          <div className="mt-10 text-center">
+          <div className="mt-8 text-center">
             <button
               onClick={() => {
                 setIsLogin(!isLogin);
                 setError(null);
-                // Reset role to officer when switching back to sign up for standard flow
                 if (isLogin) setRole(Role.OFFICER); 
               }}
-              className="text-xs font-black text-blue-600 hover:text-blue-800 transition-all uppercase tracking-widest"
+              className="text-xs font-black text-slate-500 hover:text-blue-600 transition-colors uppercase tracking-widest p-2"
             >
-              {isLogin ? "নতুন একাউন্ট? এখানে ক্লিক করুন" : 'লগইন পেইজে ফিরে যান'}
+              {isLogin ? "New User? Create Account" : 'Back to Login'}
             </button>
           </div>
         )}
