@@ -31,7 +31,7 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
 
     try {
       const L = (window as any).L;
-      // Initialize map with a slight delay to ensure container has dimensions
+      // Initialize map
       mapRef.current = L.map(mapContainerRef.current).setView([23.8103, 90.4125], 10);
       
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -39,23 +39,29 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
       }).addTo(mapRef.current);
 
       // Force a resize calculation to ensure tiles load
-      const resizeTimer = setInterval(() => {
-        if(mapRef.current) mapRef.current.invalidateSize();
-      }, 500);
+      const handleResize = () => {
+        if (mapRef.current) mapRef.current.invalidateSize();
+      };
+      
+      // Trigger multiple times to catch animation frames
+      setTimeout(handleResize, 100);
+      setTimeout(handleResize, 500);
+      setTimeout(handleResize, 1000);
+      
+      // Add window resize listener
+      window.addEventListener('resize', handleResize);
 
-      // Clear the interval after 3 seconds, assuming it's stabilized
-      setTimeout(() => clearInterval(resizeTimer), 3000);
+      return () => {
+        window.removeEventListener('resize', handleResize);
+        if (mapRef.current) {
+          mapRef.current.remove();
+          mapRef.current = null;
+        }
+      };
 
     } catch (e) {
       console.error("Map init error:", e);
     }
-
-    return () => {
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-      }
-    };
   }, [isLeafletReady]);
 
   // Handle Markers

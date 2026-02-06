@@ -164,8 +164,8 @@ const App: React.FC = () => {
         {activeTab === 'attendance' && <AttendancePanel user={user} branches={branches} onAttendanceChange={fetchData} />}
         
         {activeTab === 'tracking' && (
-          // Used dvh for better mobile viewport handling and specific height calc
-          <div className="flex flex-col space-y-4 h-[calc(100dvh-180px)] md:h-[calc(100vh-140px)] w-full">
+          // Used dvh and min-h-[500px] fallback for robust mobile rendering
+          <div className="flex flex-col space-y-4 h-[calc(100dvh-180px)] md:h-[calc(100vh-140px)] min-h-[500px] w-full">
             <div className="bg-white p-4 rounded-2xl border flex justify-between items-center shadow-sm shrink-0">
               <h4 className="font-bold text-slate-800 text-sm md:text-base">লাইভ লোকেশন (ব্রাঞ্চ: {branches.find(b => b.id === user.branch_id)?.name || 'Default'})</h4>
               <button 
