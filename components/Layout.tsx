@@ -56,7 +56,7 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout, activeTab, setActiveTab
             </div>
             <div>
               <h1 className="text-xl font-black tracking-tight text-white">FieldForce</h1>
-              <p className="text-[10px] text-blue-400 font-bold uppercase tracking-[0.2em]">Pro Ops</p>
+              <p className="text-[8px] text-blue-400 font-bold uppercase tracking-widest leading-tight">One Platform. Total Control.</p>
             </div>
           </div>
           {/* Mobile Close Button */}
@@ -141,6 +141,10 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout, activeTab, setActiveTab
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
             <span>Sign Out</span>
           </button>
+          
+          <div className="mt-4 text-center">
+            <p className="text-[9px] text-slate-500 font-bold tracking-widest uppercase opacity-60">Developed by Anik Das</p>
+          </div>
         </div>
       </aside>
 

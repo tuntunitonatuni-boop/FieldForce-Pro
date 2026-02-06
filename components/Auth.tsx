@@ -156,15 +156,16 @@ const Auth: React.FC<AuthProps> = ({ onAuthComplete }) => {
       <div className="absolute -top-40 -left-40 w-96 h-96 bg-blue-600/30 rounded-full blur-3xl animate-pulse"></div>
       <div className="absolute bottom-0 right-0 w-80 h-80 bg-purple-600/20 rounded-full blur-3xl"></div>
 
-      <div className="max-w-md w-full bg-white/95 backdrop-blur-xl rounded-[2.5rem] p-8 md:p-10 shadow-2xl border border-white/20 relative z-10 m-4">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-3xl mb-6 shadow-lg shadow-blue-500/30 transform hover:rotate-3 transition-transform">
+      <div className="max-w-md w-full bg-white/95 backdrop-blur-xl rounded-[2.5rem] p-8 md:p-10 shadow-2xl border border-white/20 relative z-10 m-4 flex flex-col">
+        <div className="text-center mb-6">
+          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-3xl mb-4 shadow-lg shadow-blue-500/30 transform hover:rotate-3 transition-transform">
             <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
           </div>
           <h1 className="text-3xl font-black text-slate-800 tracking-tight">
             FieldForce <span className="text-blue-600">Pro</span>
           </h1>
-          <p className="text-slate-500 mt-2 font-bold uppercase text-[10px] tracking-[0.2em]">
+          <p className="text-blue-600 font-bold text-xs uppercase tracking-widest mt-1 mb-4">One Platform. Total Control.</p>
+          <p className="text-slate-400 font-bold uppercase text-[10px] tracking-[0.2em]">
             {isFirstRun ? 'Setup & Registration' : (isLogin ? 'Secure Access' : 'Create Account')}
           </p>
         </div>
@@ -297,6 +298,10 @@ const Auth: React.FC<AuthProps> = ({ onAuthComplete }) => {
             </button>
           </div>
         )}
+      </div>
+
+      <div className="absolute bottom-6 text-slate-500/50 text-[10px] font-black uppercase tracking-[0.2em] z-20 pointer-events-none">
+        Developed by Anik Das
       </div>
     </div>
   );
