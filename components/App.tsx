@@ -160,12 +160,12 @@ const App: React.FC = () => {
 
   return (
     <Layout user={user} onLogout={() => supabase.auth.signOut()} activeTab={activeTab} setActiveTab={setActiveTab}>
-      <div className="max-w-6xl mx-auto h-full relative">
+      <div className="max-w-6xl mx-auto h-full relative flex flex-col">
         {activeTab === 'attendance' && <AttendancePanel user={user} branches={branches} onAttendanceChange={fetchData} />}
         
         {activeTab === 'tracking' && (
-          // Fixed height calculation to ensure map container has size on mobile
-          <div className="flex flex-col space-y-4 h-[calc(100vh-160px)] md:h-[calc(100vh-120px)]">
+          // Used dvh for better mobile viewport handling and specific height calc
+          <div className="flex flex-col space-y-4 h-[calc(100dvh-180px)] md:h-[calc(100vh-140px)] w-full">
             <div className="bg-white p-4 rounded-2xl border flex justify-between items-center shadow-sm shrink-0">
               <h4 className="font-bold text-slate-800 text-sm md:text-base">লাইভ লোকেশন (ব্রাঞ্চ: {branches.find(b => b.id === user.branch_id)?.name || 'Default'})</h4>
               <button 
@@ -175,7 +175,7 @@ const App: React.FC = () => {
                 {isTracking ? 'ভিজিট শেষ' : 'ভিজিট শুরু'}
               </button>
             </div>
-            <div className="flex-1 relative w-full rounded-2xl overflow-hidden shadow-inner border border-slate-200">
+            <div className="flex-1 w-full rounded-2xl overflow-hidden shadow-inner border border-slate-200 relative bg-slate-100">
               <LiveMap users={allUsers} trackingData={trackingData} currentUser={user} />
             </div>
           </div>

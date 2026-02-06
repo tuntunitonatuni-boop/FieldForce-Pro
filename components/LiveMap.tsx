@@ -8,9 +8,6 @@ interface LiveMapProps {
   currentUser: User;
 }
 
-// Access Leaflet from window object
-const L = (window as any).L;
-
 const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
@@ -34,16 +31,20 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
 
     try {
       const L = (window as any).L;
+      // Initialize map with a slight delay to ensure container has dimensions
       mapRef.current = L.map(mapContainerRef.current).setView([23.8103, 90.4125], 10);
       
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors'
       }).addTo(mapRef.current);
 
-      // Fix for map not rendering correctly in some hidden/flex containers
-      setTimeout(() => {
-        if (mapRef.current) mapRef.current.invalidateSize();
+      // Force a resize calculation to ensure tiles load
+      const resizeTimer = setInterval(() => {
+        if(mapRef.current) mapRef.current.invalidateSize();
       }, 500);
+
+      // Clear the interval after 3 seconds, assuming it's stabilized
+      setTimeout(() => clearInterval(resizeTimer), 3000);
 
     } catch (e) {
       console.error("Map init error:", e);
@@ -137,8 +138,12 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
   }
 
   return (
-    <div className="h-full w-full relative">
-      <div ref={mapContainerRef} className="absolute inset-0 z-0 bg-slate-100" />
+    <div className="h-full w-full relative" style={{ minHeight: '100%', minWidth: '100%' }}>
+      <div 
+        ref={mapContainerRef} 
+        className="absolute inset-0 z-0 bg-slate-100" 
+        style={{ width: '100%', height: '100%' }}
+      />
       
       <div className="absolute bottom-4 left-4 z-[500] bg-white/95 backdrop-blur p-3 rounded-xl shadow-xl text-xs border border-slate-200 min-w-[140px]">
         <h4 className="font-bold mb-2 text-slate-800 border-b border-slate-100 pb-1 flex items-center">
