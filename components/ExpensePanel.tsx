@@ -20,13 +20,16 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
   const [newVehicle, setNewVehicle] = useState<{ name: string; type: 'car' | 'motorcycle' }>({ name: '', type: 'car' });
 
   // Form State
+  const [entryDate, setEntryDate] = useState(new Date().toISOString().split('T')[0]); // Default to Today
+  const [vehicleCategory, setVehicleCategory] = useState<'car' | 'motorcycle'>('car'); // New State for Filter
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
   const [expenseType, setExpenseType] = useState('fuel');
   const [fuelType, setFuelType] = useState('lpg');
   const [amount, setAmount] = useState('');
-  const [quantity, setQuantity] = useState(''); // Parimap
+  const [unitPrice, setUnitPrice] = useState(''); // Rate per unit
+  const [quantity, setQuantity] = useState(''); // Parimap (Auto Calculated)
   const [odometer, setOdometer] = useState('');
-  const [description, setDescription] = useState('');
+  const [description, setDescription] = useState(''); // Remarks
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
@@ -37,6 +40,19 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
     fetchExpenses();
     fetchVehicles();
   }, [currentUser]);
+
+  // Auto Calculate Quantity
+  useEffect(() => {
+    if (expenseType === 'fuel' && amount && unitPrice) {
+      const amt = parseFloat(amount);
+      const price = parseFloat(unitPrice);
+      if (!isNaN(amt) && !isNaN(price) && price > 0) {
+        setQuantity((amt / price).toFixed(2));
+      } else {
+        setQuantity('');
+      }
+    }
+  }, [amount, unitPrice, expenseType]);
 
   const fetchExpenses = async () => {
     setLoading(true);
@@ -119,9 +135,11 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!amount) return alert("টাকার পরিমাণ আবশ্যক।");
+    if (!entryDate) return alert("তারিখ নির্বাচন করুন।");
     
     // Validation: Check if vehicle is needed
-    const needsVehicle = ['fuel', 'maintenance', 'toll', 'motorcycle_bill'].includes(expenseType);
+    // Note: motorcycle_bill is removed, now mapped via vehicle type
+    const needsVehicle = ['fuel', 'maintenance', 'toll'].includes(expenseType);
     if (needsVehicle && !selectedVehicleId && vehicles.length > 0) {
       return alert("দয়া করে গাড়ি অথবা বাইক সিলেক্ট করুন।");
     }
@@ -143,18 +161,20 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
         odometer: odometer ? parseFloat(odometer) : null,
         description,
         voucher_url: voucherUrl,
-        date: new Date().toISOString().split('T')[0]
+        date: entryDate // Use selected date
       });
 
       if (error) throw error;
       
       alert("খরচ এন্ট্রি সফল হয়েছে!");
       setAmount('');
+      setUnitPrice('');
       setQuantity('');
       setOdometer('');
       setDescription('');
       setFile(null);
       setPreviewUrl(null);
+      // Keep date as is for easier bulk entry, or could reset to today: setEntryDate(new Date().toISOString().split('T')[0]);
       fetchExpenses();
     } catch (e: any) {
       alert("সমস্যা হয়েছে: " + e.message);
@@ -185,24 +205,39 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
         sign: ''
       };
 
-      // Process Vehicles (Cars/Bikes)
+      // Initialize vehicles map
       vehicles.forEach(v => {
-        const vExp = daysExpenses.filter(ex => ex.vehicle_id === v.id && ex.type === 'fuel');
-        rowData.vehicles[v.id] = {
-          lpg: vExp.filter(x => x.fuel_type === 'lpg').reduce((sum, x) => sum + x.amount, 0),
-          petrol: vExp.filter(x => x.fuel_type === 'petrol' || x.fuel_type === 'octane').reduce((sum, x) => sum + x.amount, 0),
-          bill99: vExp.filter(x => x.fuel_type === '99').reduce((sum, x) => sum + x.amount, 0),
-        };
-        rowData.total += (rowData.vehicles[v.id].lpg + rowData.vehicles[v.id].petrol + rowData.vehicles[v.id].bill99);
+        rowData.vehicles[v.id] = { lpg: 0, petrol: 0, bill99: 0 };
       });
 
-      // Process Others
-      rowData.motorcycle_bill = daysExpenses.filter(ex => ex.type === 'motorcycle_bill').reduce((sum, x) => sum + x.amount, 0);
-      rowData.toll = daysExpenses.filter(ex => ex.type === 'toll').reduce((sum, x) => sum + x.amount, 0);
-      rowData.maintenance = daysExpenses.filter(ex => ex.type === 'maintenance').reduce((sum, x) => sum + x.amount, 0);
-      rowData.cooking_gas = daysExpenses.filter(ex => ex.type === 'cooking_gas').reduce((sum, x) => sum + x.amount, 0);
-      
-      rowData.total += (rowData.motorcycle_bill + rowData.toll + rowData.maintenance + rowData.cooking_gas);
+      daysExpenses.forEach(ex => {
+        const vehicle = vehicles.find(v => v.id === ex.vehicle_id);
+        const isMoto = vehicle?.type === 'motorcycle';
+        const isCar = vehicle?.type === 'car';
+
+        // 1. Motorcycle Logic: Sum everything for motorcycles into one column
+        if (isMoto) {
+            rowData.motorcycle_bill += ex.amount;
+        } 
+        // 2. Car & General Logic
+        else {
+            if (ex.type === 'fuel' && isCar && vehicle) {
+                if (ex.fuel_type === 'lpg') rowData.vehicles[vehicle.id].lpg += ex.amount;
+                else if (ex.fuel_type === '99') rowData.vehicles[vehicle.id].bill99 += ex.amount;
+                else rowData.vehicles[vehicle.id].petrol += ex.amount; // petrol, octane, diesel
+            } else if (ex.type === 'maintenance') {
+                rowData.maintenance += ex.amount; // Only car/general maintenance
+            } else if (ex.type === 'toll') {
+                rowData.toll += ex.amount; // Only car/general toll
+            } else if (ex.type === 'cooking_gas') {
+                rowData.cooking_gas += ex.amount;
+            } else if (ex.type === 'other') {
+                // Decide where 'other' goes? Currently just added to total, not specific column
+            }
+        }
+        
+        rowData.total += ex.amount;
+      });
 
       return rowData;
     });
@@ -213,21 +248,21 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
   const exportToCSV = () => {
     // Header Row 1: Vehicles
     let header1 = ["SL", "Date"];
-    vehicles.forEach(v => {
+    vehicles.filter(v => v.type === 'car').forEach(v => {
       header1.push(`${v.name} (LPG)`);
       header1.push(`${v.name} (Petrol/Oct)`);
       header1.push(`${v.name} (99 Bill)`);
     });
-    header1.push("Motorcycle");
-    header1.push("Toll/Pass");
-    header1.push("Repair");
+    header1.push("Motorcycle (All)");
+    header1.push("Toll/Pass (Car)");
+    header1.push("Maintenance (Car)");
     header1.push("Cooking Gas");
     header1.push("Total Price");
 
     // Rows
     const rows = reportData.map(r => {
       let row = [r.serial, r.date];
-      vehicles.forEach(v => {
+      vehicles.filter(v => v.type === 'car').forEach(v => {
         row.push(r.vehicles[v.id].lpg || 0);
         row.push(r.vehicles[v.id].petrol || 0);
         row.push(r.vehicles[v.id].bill99 || 0);
@@ -248,8 +283,68 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
     link.click();
   };
 
+  const handlePrint = () => {
+    window.print();
+  };
+
   return (
     <div className="space-y-8 pb-20">
+      <style>{`
+        @media print {
+          /* 1. Reset global layout constraints causing blank pages */
+          html, body, #root, main {
+            height: auto !important;
+            overflow: visible !important;
+            min-height: auto !important;
+          }
+
+          /* 2. Hide everything by default */
+          body * {
+            visibility: hidden;
+          }
+
+          /* 3. Make the report container visible and positioned at top */
+          #printable-area, #printable-area * {
+            visibility: visible;
+          }
+          
+          #printable-area {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: auto;
+            background: white;
+            z-index: 9999;
+            padding: 20px;
+            margin: 0;
+          }
+
+          /* 4. Table specific print styles */
+          table {
+            width: 100% !important;
+            border-collapse: collapse;
+          }
+          
+          /* Ensure colors print */
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+
+          /* Landscape mode preference */
+          @page {
+            size: landscape;
+            margin: 0.5cm;
+          }
+          
+          /* Hide scrollbars */
+          ::-webkit-scrollbar {
+            display: none;
+          }
+        }
+      `}</style>
+
       {/* HEADER CONTROLS */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
         <div>
@@ -277,10 +372,16 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
             className="px-4 py-3 rounded-2xl border border-slate-200 font-bold text-slate-700 outline-none focus:border-blue-500 transition-all bg-slate-50"
           />
           {viewMode === 'report' && (
-            <button onClick={exportToCSV} className="px-6 py-3 bg-green-600 text-white rounded-2xl font-black shadow-lg hover:bg-green-700 transition-all flex items-center">
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-              Excel
-            </button>
+            <div className="flex gap-2">
+              <button onClick={handlePrint} className="px-6 py-3 bg-slate-800 text-white rounded-2xl font-black shadow-lg hover:bg-slate-900 transition-all flex items-center">
+                 <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                 Print
+              </button>
+              <button onClick={exportToCSV} className="px-6 py-3 bg-green-600 text-white rounded-2xl font-black shadow-lg hover:bg-green-700 transition-all flex items-center">
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                Excel
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -341,9 +442,8 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
               <div className="md:col-span-3 grid grid-cols-3 md:grid-cols-6 gap-2">
                 {[
                   { id: 'fuel', label: 'Fuel' },
-                  { id: 'maintenance', label: 'Repair' },
+                  { id: 'maintenance', label: 'Maintenance' },
                   { id: 'toll', label: 'Toll/Pass' },
-                  { id: 'motorcycle_bill', label: 'Moto Bill' },
                   { id: 'cooking_gas', label: 'Cook Gas' },
                   { id: 'other', label: 'Other' }
                 ].map(type => (
@@ -358,14 +458,49 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
                 ))}
               </div>
 
+              {/* DATE SELECTOR (New) */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">তারিখ (Date)</label>
+                <input 
+                  type="date" 
+                  value={entryDate} 
+                  onChange={e => setEntryDate(e.target.value)} 
+                  className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none font-bold text-slate-700"
+                />
+              </div>
+
               {/* Dynamic Fields */}
-              {['fuel', 'maintenance', 'toll', 'motorcycle_bill'].includes(expenseType) && (
-                <div className="md:col-span-1">
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">গাড়ি / বাইক নির্বাচন করুন</label>
-                  <select value={selectedVehicleId} onChange={e => setSelectedVehicleId(e.target.value)} className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none font-bold">
-                    <option value="">-- Select Vehicle --</option>
-                    {vehicles.map(v => <option key={v.id} value={v.id}>{v.name} ({v.type})</option>)}
-                  </select>
+              {['fuel', 'maintenance', 'toll'].includes(expenseType) && (
+                <div className="md:col-span-1 space-y-4">
+                  {/* Category Selection */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Vehicle Category</label>
+                    <div className="flex bg-slate-100 p-1 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => { setVehicleCategory('car'); setSelectedVehicleId(''); }}
+                        className={`flex-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${vehicleCategory === 'car' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                      >
+                        Car
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setVehicleCategory('motorcycle'); setSelectedVehicleId(''); }}
+                        className={`flex-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${vehicleCategory === 'motorcycle' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                      >
+                        Bike
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Filtered Dropdown */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">{vehicleCategory === 'car' ? 'গাড়ি' : 'বাইক'} নির্বাচন করুন</label>
+                    <select value={selectedVehicleId} onChange={e => setSelectedVehicleId(e.target.value)} className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none font-bold">
+                      <option value="">-- Select {vehicleCategory === 'car' ? 'Car' : 'Bike'} --</option>
+                      {vehicles.filter(v => v.type === vehicleCategory).map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                    </select>
+                  </div>
                 </div>
               )}
 
@@ -381,16 +516,41 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
                       <option value="99">99 Bill</option>
                     </select>
                   </div>
+                </>
+              )}
+
+              {/* Amount - Always Visible */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">টাকার পরিমাণ</label>
+                <input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none font-bold" placeholder="0.00" />
+              </div>
+
+              {/* Rate & Auto-Quantity for Fuel */}
+              {expenseType === 'fuel' && (
+                <>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">পরিমাপ (লিটার/কেজি)</label>
-                    <input type="number" step="0.01" value={quantity} onChange={e => setQuantity(e.target.value)} className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none font-bold" placeholder="Qty" />
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">ইউনিট প্রাইস (প্রতি লিটার/কেজি)</label>
+                    <input type="number" step="0.01" value={unitPrice} onChange={e => setUnitPrice(e.target.value)} className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none font-bold" placeholder="Rate per unit" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">পরিমাণ (লিটার/কেজি) - Auto</label>
+                    <input type="text" value={quantity} readOnly className="w-full p-4 bg-slate-100 text-slate-500 rounded-2xl border border-slate-100 outline-none font-bold cursor-not-allowed" placeholder="Auto Calculated" />
                   </div>
                 </>
               )}
 
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">টাকার পরিমাণ</label>
-                <input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none font-bold" placeholder="0.00" />
+              {/* Remarks Field - Prominent for Maintenance */}
+              <div className="md:col-span-2">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
+                  {expenseType === 'maintenance' ? 'কি কাজ করানো হয়েছে? (Remarks)' : 'মন্তব্য / Remarks'}
+                </label>
+                <input 
+                  type="text" 
+                  value={description} 
+                  onChange={e => setDescription(e.target.value)} 
+                  className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none font-bold" 
+                  placeholder={expenseType === 'maintenance' ? "যেমন: চাকা মেরামত, মবিল চেঞ্জ..." : "বিবরণ..."} 
+                />
               </div>
 
               {expenseType !== 'cooking_gas' && (
@@ -423,15 +583,22 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
              <div className="p-6 border-b border-slate-50"><h4 className="font-black text-slate-800">সাম্প্রতিক এন্ট্রি</h4></div>
              <table className="w-full text-left">
                 <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">
-                  <tr><th className="px-6 py-4">Date</th><th className="px-6 py-4">Type</th><th className="px-6 py-4">Amount</th><th className="px-6 py-4">Details</th></tr>
+                  <tr>
+                    <th className="px-6 py-4">Date</th>
+                    <th className="px-6 py-4">Type</th>
+                    <th className="px-6 py-4">Vehicle</th>
+                    <th className="px-6 py-4">Amount</th>
+                    <th className="px-6 py-4">Remarks</th>
+                  </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {expenses.slice(0, 5).map(ex => (
                     <tr key={ex.id}>
                       <td className="px-6 py-4 text-xs font-bold text-slate-600">{ex.date}</td>
                       <td className="px-6 py-4 text-xs font-black uppercase text-slate-800">{ex.type} {ex.fuel_type && `(${ex.fuel_type})`}</td>
+                      <td className="px-6 py-4 text-xs font-bold text-blue-600">{vehicles.find(v => v.id === ex.vehicle_id)?.name || '-'}</td>
                       <td className="px-6 py-4 text-xs font-bold text-slate-800">৳{ex.amount}</td>
-                      <td className="px-6 py-4 text-xs text-slate-500">{vehicles.find(v => v.id === ex.vehicle_id)?.name || '-'}</td>
+                      <td className="px-6 py-4 text-xs text-slate-500">{ex.description || '-'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -443,24 +610,29 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
 
       {/* MATRIX REPORT VIEW */}
       {viewMode === 'report' && (
-        <div className="bg-white rounded-[2rem] shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in duration-300">
+        <div id="printable-area" className="bg-white rounded-[2rem] shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in duration-300">
+           {/* Add a print-only header */}
+           <div className="hidden print:block p-4 text-center border-b border-slate-200 mb-4">
+             <h2 className="text-2xl font-black text-slate-800">Monthly Expense Report</h2>
+             <p className="text-sm text-slate-500">{selectedMonth}</p>
+           </div>
            <div className="overflow-x-auto">
              <table className="w-full text-left border-collapse">
                <thead>
                  <tr className="bg-slate-800 text-white text-[10px] font-black uppercase tracking-wider text-center">
                    <th className="p-3 border border-slate-700" rowSpan={2}>SL</th>
                    <th className="p-3 border border-slate-700" rowSpan={2} style={{minWidth: '100px'}}>Date</th>
-                   {vehicles.map(v => (
+                   {vehicles.filter(v => v.type === 'car').map(v => (
                      <th key={v.id} colSpan={3} className="p-3 border border-slate-700">{v.name}</th>
                    ))}
-                   <th className="p-3 border border-slate-700" rowSpan={2}>Moto Bill</th>
-                   <th className="p-3 border border-slate-700" rowSpan={2}>Toll</th>
-                   <th className="p-3 border border-slate-700" rowSpan={2}>Repair</th>
+                   <th className="p-3 border border-slate-700" rowSpan={2}>Motorcycle (All)</th>
+                   <th className="p-3 border border-slate-700" rowSpan={2}>Toll (Car)</th>
+                   <th className="p-3 border border-slate-700" rowSpan={2}>Maintenance (Car)</th>
                    <th className="p-3 border border-slate-700" rowSpan={2}>Gas (Cook)</th>
                    <th className="p-3 border border-slate-700" rowSpan={2}>Total</th>
                  </tr>
                  <tr className="bg-slate-700 text-white text-[9px] font-bold text-center">
-                   {vehicles.map(v => (
+                   {vehicles.filter(v => v.type === 'car').map(v => (
                      <React.Fragment key={v.id}>
                         <th className="p-2 border border-slate-600">LPG</th>
                         <th className="p-2 border border-slate-600">Petrol</th>
@@ -474,14 +646,14 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
                    <tr key={row.date} className="text-center hover:bg-blue-50/50 text-xs font-bold text-slate-700">
                      <td className="p-3 border border-slate-100">{row.serial}</td>
                      <td className="p-3 border border-slate-100 whitespace-nowrap">{row.date}</td>
-                     {vehicles.map(v => (
+                     {vehicles.filter(v => v.type === 'car').map(v => (
                         <React.Fragment key={v.id}>
                           <td className="p-3 border border-slate-100 text-slate-500">{row.vehicles[v.id].lpg || '-'}</td>
                           <td className="p-3 border border-slate-100 text-slate-500">{row.vehicles[v.id].petrol || '-'}</td>
                           <td className="p-3 border border-slate-100 text-slate-500">{row.vehicles[v.id].bill99 || '-'}</td>
                         </React.Fragment>
                      ))}
-                     <td className="p-3 border border-slate-100">{row.motorcycle_bill || '-'}</td>
+                     <td className="p-3 border border-slate-100 text-orange-600">{row.motorcycle_bill || '-'}</td>
                      <td className="p-3 border border-slate-100">{row.toll || '-'}</td>
                      <td className="p-3 border border-slate-100">{row.maintenance || '-'}</td>
                      <td className="p-3 border border-slate-100">{row.cooking_gas || '-'}</td>
