@@ -51,8 +51,8 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser, allUsers, trackingDa
 
   return (
     <div className="space-y-6 md:space-y-8">
-      {/* AI Insights Header */}
-      <div className="bg-gradient-to-br from-slate-900 to-blue-900 rounded-[2rem] p-6 md:p-8 text-white shadow-2xl relative overflow-hidden transition-all hover:scale-[1.01]">
+      {/* AI Insights Header - Adaptive padding */}
+      <div className="bg-gradient-to-br from-slate-900 to-blue-900 rounded-[1.5rem] md:rounded-[2rem] p-6 md:p-8 text-white shadow-2xl relative overflow-hidden transition-all hover:scale-[1.01]">
         <div className="absolute top-0 right-0 w-48 h-48 bg-blue-500/20 rounded-full blur-3xl -translate-y-1/4 translate-x-1/4"></div>
         <div className="relative z-10">
           <div className="flex items-center space-x-2 mb-4">
@@ -65,7 +65,8 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser, allUsers, trackingDa
         </div>
       </div>
 
-      <div className="flex items-center justify-between sticky top-0 z-10 bg-slate-50/90 backdrop-blur py-2">
+      {/* Control Bar - Removed Sticky, relying on Layout header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 py-2">
         <div className="flex items-center space-x-3">
           {isSuperAdmin && selectedBranchId && (
             <button 
@@ -77,10 +78,10 @@ const Dashboard: React.FC<DashboardProps> = ({ currentUser, allUsers, trackingDa
           )}
           <div>
             <h2 className="text-xl font-black text-slate-800 tracking-tight">
-              {selectedBranchId ? `${selectedBranch?.name}` : "Overview"}
+              {selectedBranchId ? `${selectedBranch?.name}` : "Branch Overview"}
             </h2>
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-              {isBranchAdmin ? "Staff Metrics" : (selectedBranchId ? "Branch Officers" : "Select Branch")}
+              {isBranchAdmin ? "Staff Metrics" : (selectedBranchId ? "Active Staff" : "Select Branch")}
             </p>
           </div>
         </div>

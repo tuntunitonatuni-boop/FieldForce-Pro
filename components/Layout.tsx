@@ -30,18 +30,18 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout, activeTab, setActiveTab
   };
 
   return (
-    <div className="flex h-screen bg-slate-50 font-sans overflow-hidden">
+    <div className="flex h-screen bg-slate-50 font-sans overflow-hidden fixed inset-0">
       {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
         <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 md:hidden animate-in fade-in duration-200"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] md:hidden animate-in fade-in duration-200"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar - Highest Z-Index on Mobile */}
       <aside className={`
-        fixed inset-y-0 left-0 z-[60] w-72 bg-slate-900 text-white flex flex-col relative overflow-hidden transition-transform duration-300 ease-in-out shadow-2xl
+        fixed inset-y-0 left-0 z-[110] w-72 bg-slate-900 text-white flex flex-col relative overflow-hidden transition-transform duration-300 ease-in-out shadow-2xl
         md:relative md:translate-x-0 md:flex md:w-80 md:z-0 md:shadow-none
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
@@ -145,24 +145,25 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout, activeTab, setActiveTab
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col h-full w-full relative">
-        {/* Mobile Header - Fixed at Top */}
-        <header className="fixed top-0 left-0 right-0 h-16 md:h-20 bg-white/90 backdrop-blur-lg border-b border-slate-200/80 flex items-center justify-between px-4 md:px-10 z-40 shadow-sm md:static md:shadow-none">
+      <main className="flex-1 flex flex-col h-full w-full relative bg-slate-50">
+        {/* Mobile Header - Fixed at Top - Z-Index High */}
+        <header className="fixed top-0 left-0 right-0 h-16 md:h-20 bg-white/95 backdrop-blur-xl border-b border-slate-200/80 flex items-center justify-between px-4 md:px-10 z-[60] shadow-sm md:static md:shadow-none transition-all">
           <div className="flex items-center">
              {/* Left: Hamburger Menu */}
              <button 
                onClick={() => setSidebarOpen(true)}
-               className="md:hidden w-10 h-10 flex items-center justify-center mr-2 text-slate-700 hover:bg-slate-100 rounded-full transition-colors active:scale-90"
+               className="md:hidden w-10 h-10 flex items-center justify-center mr-2 text-slate-700 hover:bg-slate-100 rounded-full transition-colors active:scale-90 tap-highlight-transparent"
+               aria-label="Menu"
              >
-               <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h7" /></svg>
+               <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 6h16M4 12h16M4 18h7" /></svg>
              </button>
              
              {/* Title */}
-             <div>
-               <h2 className="text-lg md:text-2xl font-black text-slate-800 capitalize tracking-tight leading-none">
+             <div className="flex flex-col justify-center h-full pt-1">
+               <h2 className="text-lg md:text-2xl font-black text-slate-800 capitalize tracking-tight leading-none truncate max-w-[200px]">
                  {activeTab === 'management' ? (isSuperAdmin ? 'Global Control' : 'Team Admin') : activeTab.replace('-', ' ')}
                </h2>
-               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest md:hidden">{getRoleLabel(user.role)}</p>
+               <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest md:hidden leading-tight">{getRoleLabel(user.role)}</p>
              </div>
           </div>
 
@@ -174,14 +175,17 @@ const Layout: React.FC<LayoutProps> = ({ user, onLogout, activeTab, setActiveTab
           </div>
         </header>
 
-        {/* Scrollable Content - Added top padding for fixed header */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-10 pt-20 md:pt-10 pb-28 md:pb-10 scroll-smooth">
-          {children}
+        {/* Scrollable Content Area */}
+        {/* We use specific padding-top to account for fixed header and padding-bottom for bottom nav */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden pt-16 pb-24 md:pt-0 md:pb-0 scroll-smooth overscroll-y-contain w-full">
+          <div className="p-4 md:p-10 min-h-full">
+            {children}
+          </div>
         </div>
       </main>
 
-      {/* Mobile Bottom Nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-slate-200/60 h-[80px] pb-safe flex items-center justify-around z-50 shadow-[0_-4px_20px_-5px_rgba(0,0,0,0.1)] rounded-t-[2rem] px-2">
+      {/* Mobile Bottom Nav - Fixed at Bottom - Z-Index High */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-200/80 h-[80px] pb-safe flex items-center justify-around z-[50] shadow-[0_-4px_20px_-5px_rgba(0,0,0,0.05)] rounded-t-[2rem] px-2">
         {!isDriver && (
           <MobileNavItem 
             active={activeTab === 'attendance'} 
@@ -244,7 +248,7 @@ const SidebarItem: React.FC<{ active: boolean; onClick: () => void; icon: React.
 const MobileNavItem: React.FC<{ active: boolean; onClick: () => void; label: string; icon: React.ReactNode }> = ({ active, onClick, label, icon }) => (
   <button 
     onClick={onClick} 
-    className={`relative flex flex-col items-center justify-center flex-1 h-full space-y-1 transition-all duration-300 active:scale-90 ${active ? 'text-blue-600' : 'text-slate-400'}`}
+    className={`relative flex flex-col items-center justify-center flex-1 h-full space-y-1 transition-all duration-300 active:scale-90 tap-highlight-transparent ${active ? 'text-blue-600' : 'text-slate-400'}`}
   >
     {active && (
       <span className="absolute -top-3 left-1/2 -translate-x-1/2 w-8 h-1 bg-blue-600 rounded-b-lg shadow-[0_0_10px_rgba(37,99,235,0.5)]"></span>

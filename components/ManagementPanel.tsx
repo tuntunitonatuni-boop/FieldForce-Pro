@@ -13,8 +13,6 @@ interface ManagementPanelProps {
 const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers, branches, onRefresh }) => {
   const [activeSubTab, setActiveSubTab] = useState<'branches' | 'admins' | 'officers' | 'drivers'>('officers');
   const [loading, setLoading] = useState(false);
-  const [editingUserId, setEditingUserId] = useState<string | null>(null);
-  const [userTargets, setUserTargets] = useState({ daily: 0, weekly: 0, monthly: 0 });
   
   const [showAddForm, setShowAddForm] = useState(false);
   const [newUser, setNewUser] = useState({ 
@@ -130,22 +128,6 @@ const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers
     setLoading(false);
   };
 
-  const handleUpdateTarget = async (userId: string) => {
-    setLoading(true);
-    try {
-      const { error } = await supabase.from('profiles').update({
-        target_daily: userTargets.daily,
-        target_weekly: userTargets.weekly,
-        target_monthly: userTargets.monthly
-      }).eq('id', userId);
-      if (error) throw error;
-      setEditingUserId(null);
-      onRefresh();
-      alert("টার্গেট আপডেট হয়েছে!");
-    } catch (e: any) { alert(e.message); }
-    setLoading(false);
-  };
-
   // Helper to get list based on tab
   const getList = () => {
     switch(activeSubTab) {
@@ -158,7 +140,7 @@ const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers
   return (
     <div className="space-y-8 pb-24">
       {/* Sub-Navigation */}
-      <div className="flex space-x-6 border-b border-slate-200 overflow-x-auto">
+      <div className="flex space-x-6 border-b border-slate-200 overflow-x-auto no-scrollbar">
         <button onClick={() => setActiveSubTab('officers')} className={`pb-4 px-2 whitespace-nowrap font-black text-xs uppercase tracking-widest transition-all ${activeSubTab === 'officers' ? 'border-b-4 border-blue-600 text-blue-600' : 'text-slate-400'}`}>{isBranchAdmin ? 'আমার অফিসাররা' : 'ক্রেডিট অফিসার'}</button>
         {isSuperAdmin && (
           <>
@@ -183,7 +165,7 @@ const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers
             </div>
           </div>
           <div className="lg:col-span-2 bg-white rounded-[2rem] border border-slate-100 shadow-xl overflow-hidden">
-             <table className="w-full text-left">
+             <table className="w-full text-left hidden md:table">
               <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">
                 <tr><th className="px-8 py-5">Branch Name</th><th className="px-8 py-5 text-right">Action</th></tr>
               </thead>
@@ -204,6 +186,18 @@ const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers
                 ))}
               </tbody>
             </table>
+            {/* Mobile Branch List */}
+            <div className="md:hidden p-4 space-y-4">
+              {branches.map(b => (
+                  <div key={b.id} className="bg-slate-50 p-4 rounded-xl flex justify-between items-center">
+                    <div>
+                      <p className="font-black text-slate-800">{b.name}</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ID: {b.id}</p>
+                    </div>
+                    <button onClick={() => handleDeleteBranch(b.id, b.name)} className="text-red-500 text-xs font-black uppercase bg-white p-2 rounded-lg shadow-sm">Delete</button>
+                  </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -219,17 +213,17 @@ const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers
             {(isSuperAdmin || (isBranchAdmin && activeSubTab === 'officers')) && (
               <button 
                 onClick={() => setShowAddForm(!showAddForm)}
-                className={`px-6 py-3 rounded-2xl font-black text-sm transition-all shadow-lg ${showAddForm ? 'bg-slate-100 text-slate-600' : 'bg-green-600 text-white shadow-green-100 hover:bg-green-700'}`}
+                className={`px-4 py-3 md:px-6 rounded-2xl font-black text-sm transition-all shadow-lg ${showAddForm ? 'bg-slate-100 text-slate-600' : 'bg-green-600 text-white shadow-green-100 hover:bg-green-700'}`}
               >
-                {showAddForm ? 'বাতিল করুন' : `+ নতুন ${activeSubTab.slice(0, -1)}`}
+                {showAddForm ? 'Cancel' : `+ New`}
               </button>
             )}
           </div>
 
           {showAddForm && (
-            <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-2xl animate-in slide-in-from-top duration-300">
+            <div className="bg-white p-6 md:p-8 rounded-[2rem] border border-slate-100 shadow-2xl animate-in slide-in-from-top duration-300">
               <h5 className="font-black text-slate-800 mb-6 uppercase text-[10px] tracking-widest">অ্যাকাউন্ট ইনফরমেশন</h5>
-              <form onSubmit={handleCreateUser} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <form onSubmit={handleCreateUser} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
                 <input type="text" placeholder="পুরো নাম" required value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none font-bold" />
                 <input type="text" placeholder="ইউজারনেম" required value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none font-bold" />
                 <input type="email" placeholder="ইমেইল" required value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none font-bold" />
@@ -258,7 +252,8 @@ const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers
             </div>
           )}
 
-          <div className="bg-white rounded-[2rem] border border-slate-100 shadow-xl overflow-hidden overflow-x-auto">
+          {/* Desktop Table View */}
+          <div className="hidden md:block bg-white rounded-[2rem] border border-slate-100 shadow-xl overflow-hidden overflow-x-auto">
             <table className="w-full text-left">
               <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">
                 <tr><th className="px-8 py-5">Name</th><th className="px-8 py-5">Role</th><th className="px-8 py-5 text-right">Action</th></tr>
@@ -293,6 +288,34 @@ const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* Mobile Card View */}
+          <div className="md:hidden grid grid-cols-1 gap-4">
+            {getList().map(u => (
+              <div key={u.id} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                <div className="flex items-center space-x-4">
+                  <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-black text-lg">
+                    {u.name.charAt(0)}
+                  </div>
+                  <div>
+                    <h4 className="font-black text-slate-800">{u.name}</h4>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">@{u.username}</p>
+                    <span className="inline-block mt-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 text-[9px] font-bold uppercase tracking-wider">
+                      {u.role.replace('_', ' ')}
+                    </span>
+                  </div>
+                </div>
+                {u.id !== currentUser.id && (
+                  <button 
+                    onClick={() => handleDeleteUser(u.id, u.name)} 
+                    className="p-3 bg-red-50 text-red-500 rounded-xl active:scale-95 transition-transform"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       )}
