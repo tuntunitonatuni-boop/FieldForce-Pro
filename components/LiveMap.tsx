@@ -17,7 +17,6 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
 
   // 1. Robust Leaflet Loader
   useEffect(() => {
-    // Check if L is already defined
     if ((window as any).L) {
       setIsLeafletReady(true);
       return;
@@ -47,8 +46,8 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
 
       // Init Map
       const map = L.map(mapContainerRef.current, {
-        zoomControl: false, // We hide default zoom to save mobile space
-        attributionControl: true,
+        zoomControl: false,
+        attributionControl: false, // We add it manually if needed, or hide to save space
         fadeAnimation: true,
         markerZoomAnimation: true
       }).setView([23.8103, 90.4125], 13);
@@ -69,7 +68,7 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
       
       resizeObserver.observe(mapContainerRef.current);
 
-      // Force initial resize calculation after a short tick
+      // Force initial resize
       setTimeout(() => map.invalidateSize(), 200);
 
       return () => {
@@ -104,7 +103,6 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
       const roleColor = data.role === Role.SUPER_ADMIN ? '#ef4444' : data.role === Role.BRANCH_ADMIN ? '#f97316' : '#3b82f6';
       const initials = (data.name || 'U').charAt(0).toUpperCase();
       
-      // Responsive Marker Icon
       const customIcon = L.divIcon({
         className: 'custom-user-marker',
         html: `
@@ -148,11 +146,10 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
           </div>
         `,
         iconSize: [44, 44],
-        iconAnchor: [22, 22] // Centered
+        iconAnchor: [22, 22]
       });
 
       if (markersRef.current[userId]) {
-        // Smoothly animate to new position
         markersRef.current[userId].setLatLng([data.lat, data.lng]);
         markersRef.current[userId].setIcon(customIcon);
         markersRef.current[userId].setZIndexOffset(userId === currentUser.id ? 1000 : 0);
@@ -162,7 +159,6 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
       }
     });
 
-    // Remove old markers
     Object.keys(markersRef.current).forEach(id => {
       if (!visibleUserIds.includes(id)) {
         markersRef.current[id].remove();
@@ -170,11 +166,8 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
       }
     });
 
-    // Auto-center logic (Only if tracking self or only 1 user visible)
     if (visibleUserIds.includes(currentUser.id) && trackingData[currentUser.id]) {
       const myData = trackingData[currentUser.id];
-      // Only pan if it's the first load OR user is solitary. 
-      // We avoid aggressive panning if the user is dragging the map.
       if (Object.keys(markersRef.current).length === 1) {
          mapRef.current.setView([myData.lat, myData.lng], 15);
       }
@@ -182,15 +175,11 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
 
   }, [trackingData, currentUser, isLeafletReady]);
 
-  // Loading / Error States
   if (loadError) {
     return (
       <div className="h-full w-full flex flex-col items-center justify-center bg-red-50 text-red-600 p-4 text-center rounded-2xl border border-red-100">
-        <svg className="w-8 h-8 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-        <p className="font-bold text-sm">Map Connection Failed</p>
-        <button onClick={() => window.location.reload()} className="mt-3 px-4 py-2 bg-white border border-red-200 rounded-lg shadow-sm text-xs font-bold uppercase tracking-widest hover:bg-red-50">
-          Retry
-        </button>
+        <p className="font-bold text-sm">Map Failed to Load</p>
+        <button onClick={() => window.location.reload()} className="mt-2 text-xs underline">Retry</button>
       </div>
     );
   }
@@ -198,21 +187,13 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
   if (!isLeafletReady) {
     return (
       <div className="h-full w-full flex items-center justify-center bg-slate-100 rounded-2xl animate-pulse">
-        <div className="flex flex-col items-center opacity-50">
-          <div className="w-8 h-8 border-4 border-slate-300 border-t-blue-500 rounded-full animate-spin mb-3"></div>
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Initializing Satellites...</p>
-        </div>
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Loading Map...</p>
       </div>
     );
   }
 
   return (
-    <div className="h-full w-full relative bg-slate-100 overflow-hidden isolate">
-      {/* 
-        Tailwind Conflict Fix: 
-        We inject styles specifically for this component to ensure Leaflet images 
-        don't get 'max-width: 100%' from Tailwind's reset.
-      */}
+    <div className="relative w-full h-full bg-slate-100 rounded-2xl overflow-hidden">
       <style>{`
         .leaflet-pane img, 
         .leaflet-tile-container img { 
@@ -225,13 +206,15 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
         }
       `}</style>
 
+      {/* Map Container: Explicitly Full Size and Z-Index 10 */}
       <div 
         ref={mapContainerRef} 
-        className="absolute inset-0 w-full h-full z-0" 
+        className="absolute inset-0 w-full h-full z-10" 
+        style={{ minHeight: '100%', minWidth: '100%' }}
       />
       
-      {/* Mobile-Friendly Legend */}
-      <div className="absolute bottom-5 left-4 z-[400]">
+      {/* Legend: Z-Index 20 (Higher than Map) */}
+      <div className="absolute bottom-5 left-4 z-20">
         <div className="bg-white/90 backdrop-blur-md p-3 rounded-xl shadow-lg border border-slate-200/50 flex flex-col gap-2">
            <div className="flex items-center space-x-2">
              <div className="w-2.5 h-2.5 rounded-full bg-blue-500 ring-2 ring-white"></div>
