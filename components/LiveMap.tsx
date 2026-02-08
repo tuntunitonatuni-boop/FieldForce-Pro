@@ -13,15 +13,21 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
   const mapRef = useRef<any>(null);
   const markersRef = useRef<Record<string, any>>({});
   const [isLeafletReady, setIsLeafletReady] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
-  // Check if Leaflet is loaded
+  // Check if Leaflet is loaded from CDN
   useEffect(() => {
+    let attempts = 0;
     const checkLeaflet = setInterval(() => {
+      attempts++;
       if ((window as any).L) {
         setIsLeafletReady(true);
         clearInterval(checkLeaflet);
+      } else if (attempts > 100) { // 5 seconds timeout
+        setLoadError(true);
+        clearInterval(checkLeaflet);
       }
-    }, 100);
+    }, 50);
     return () => clearInterval(checkLeaflet);
   }, []);
 
@@ -29,39 +35,53 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
   useEffect(() => {
     if (!mapContainerRef.current || !isLeafletReady || mapRef.current) return;
 
-    try {
-      const L = (window as any).L;
-      // Initialize map
-      mapRef.current = L.map(mapContainerRef.current).setView([23.8103, 90.4125], 10);
+    // Small delay to ensure container has dimensions
+    const initTimer = setTimeout(() => {
+      if (!mapContainerRef.current) return;
       
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
-      }).addTo(mapRef.current);
+      try {
+        const L = (window as any).L;
+        
+        // Initialize map
+        mapRef.current = L.map(mapContainerRef.current, {
+          zoomControl: false,
+          attributionControl: true,
+          fadeAnimation: true,
+          markerZoomAnimation: true
+        }).setView([23.8103, 90.4125], 10); // Default Dhaka
+        
+        // OpenStreetMap Standard Tiles
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '© OpenStreetMap'
+        }).addTo(mapRef.current);
 
-      // Force a resize calculation to ensure tiles load
-      const handleResize = () => {
-        if (mapRef.current) mapRef.current.invalidateSize();
-      };
-      
-      // Trigger multiple times to catch animation frames
-      setTimeout(handleResize, 100);
-      setTimeout(handleResize, 500);
-      setTimeout(handleResize, 1000);
-      
-      // Add window resize listener
-      window.addEventListener('resize', handleResize);
+        // Force invalidation to ensure tiles render
+        mapRef.current.invalidateSize();
+        
+        // Monitor resize
+        const resizeObserver = new ResizeObserver(() => {
+          if (mapRef.current) {
+            mapRef.current.invalidateSize();
+          }
+        });
+        
+        resizeObserver.observe(mapContainerRef.current);
+        
+        return () => {
+          resizeObserver.disconnect();
+          if (mapRef.current) {
+            mapRef.current.remove();
+            mapRef.current = null;
+          }
+        };
+      } catch (e) {
+        console.error("Map Init Error:", e);
+        setLoadError(true);
+      }
+    }, 100);
 
-      return () => {
-        window.removeEventListener('resize', handleResize);
-        if (mapRef.current) {
-          mapRef.current.remove();
-          mapRef.current = null;
-        }
-      };
-
-    } catch (e) {
-      console.error("Map init error:", e);
-    }
+    return () => clearTimeout(initTimer);
   }, [isLeafletReady]);
 
   // Handle Markers
@@ -95,27 +115,20 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
             </div>
           </div>
         `,
-        iconSize: [60, 50],
-        iconAnchor: [30, 45]
+        iconSize: [60, 60], // Roughly expected size
+        iconAnchor: [30, 50]
       });
 
       if (markersRef.current[userId]) {
         markersRef.current[userId].setLatLng([data.lat, data.lng]);
         markersRef.current[userId].setIcon(customIcon);
       } else {
-        const marker = L.marker([data.lat, data.lng], { icon: customIcon }).addTo(mapRef.current)
-          .bindPopup(`
-            <div class="p-1">
-              <p class="font-bold text-slate-800">${data.name || 'Unknown'}</p>
-              <p class="text-xs text-slate-500 capitalize">${(data.role || '').replace('_', ' ')}</p>
-              <p class="text-[10px] text-slate-400 mt-1">সর্বশেষ: ${new Date(data.lastUpdate).toLocaleTimeString()}</p>
-            </div>
-          `);
+        const marker = L.marker([data.lat, data.lng], { icon: customIcon }).addTo(mapRef.current);
         markersRef.current[userId] = marker;
       }
     });
 
-    // Remove old markers
+    // Cleanup
     Object.keys(markersRef.current).forEach(id => {
       if (!visibleUserIds.includes(id)) {
         markersRef.current[id].remove();
@@ -123,52 +136,58 @@ const LiveMap: React.FC<LiveMapProps> = ({ users, trackingData, currentUser }) =
       }
     });
 
-    // Auto-center logic
+    // Auto-center on self
     if (visibleUserIds.includes(currentUser.id) && Object.keys(markersRef.current).length === 1) {
       const myData = trackingData[currentUser.id];
-      // Only flyTo if distance is significant to avoid jitter
-      mapRef.current.flyTo([myData.lat, myData.lng], 15, { animate: true, duration: 1 });
+      mapRef.current.setView([myData.lat, myData.lng], 15);
     }
     
-    // Refresh size occasionally
+    // Frequent invalidation to fix grey tiles
     mapRef.current.invalidateSize();
 
   }, [trackingData, currentUser, isLeafletReady]);
 
+  if (loadError) {
+    return (
+      <div className="h-full w-full flex flex-col items-center justify-center bg-red-50 text-red-600 p-4 text-center">
+        <p className="font-bold mb-2">ম্যাপ লোড করতে সমস্যা হয়েছে।</p>
+        <button onClick={() => window.location.reload()} className="px-4 py-2 bg-white border border-red-200 rounded-lg shadow-sm text-sm font-bold">
+          Reload Page
+        </button>
+      </div>
+    );
+  }
+
   if (!isLeafletReady) {
     return (
-      <div className="h-full w-full flex items-center justify-center bg-slate-100 rounded-2xl">
-        <p className="text-slate-500 font-medium animate-pulse">ম্যাপ লোড হচ্ছে...</p>
+      <div className="h-full w-full flex items-center justify-center bg-slate-100">
+        <div className="flex flex-col items-center">
+          <div className="w-8 h-8 border-4 border-slate-200 border-t-blue-500 rounded-full animate-spin mb-2"></div>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Loading Map...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full w-full relative" style={{ minHeight: '100%', minWidth: '100%' }}>
+    <div className="h-full w-full relative bg-slate-100">
       <div 
         ref={mapContainerRef} 
-        className="absolute inset-0 z-0 bg-slate-100" 
-        style={{ width: '100%', height: '100%' }}
+        className="absolute inset-0" 
+        style={{ width: '100%', height: '100%', zIndex: 0 }}
       />
       
-      <div className="absolute bottom-4 left-4 z-[500] bg-white/95 backdrop-blur p-3 rounded-xl shadow-xl text-xs border border-slate-200 min-w-[140px]">
-        <h4 className="font-bold mb-2 text-slate-800 border-b border-slate-100 pb-1 flex items-center">
-          <span className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></span>
-          লাইভ লোকেশন
-        </h4>
+      {/* Legend */}
+      <div className="absolute bottom-4 left-4 z-[500] bg-white/90 backdrop-blur p-3 rounded-2xl shadow-lg border border-slate-200 pointer-events-none">
         <div className="space-y-1.5">
-          <div className="flex items-center space-x-2">
-            <div className="w-2.5 h-2.5 rounded-full bg-blue-500 border border-white shadow-sm"></div>
-            <span className="font-bold text-[10px] text-slate-600">অফিসার</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <div className="w-2.5 h-2.5 rounded-full bg-orange-500 border border-white shadow-sm"></div>
-            <span className="font-bold text-[10px] text-slate-600">এডমিন</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <div className="w-2.5 h-2.5 rounded-full bg-red-500 border border-white shadow-sm"></div>
-            <span className="font-bold text-[10px] text-slate-600">সুপার এডমিন</span>
-          </div>
+           <div className="flex items-center space-x-2">
+             <div className="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
+             <span className="text-[10px] font-bold text-slate-600 uppercase">Officer</span>
+           </div>
+           <div className="flex items-center space-x-2">
+             <div className="w-2.5 h-2.5 rounded-full bg-orange-500"></div>
+             <span className="text-[10px] font-bold text-slate-600 uppercase">Admin</span>
+           </div>
         </div>
       </div>
     </div>
