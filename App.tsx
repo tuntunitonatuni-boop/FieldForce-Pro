@@ -52,7 +52,6 @@ const App: React.FC = () => {
     if (profile) {
       const mappedUser = mapProfileData(profile);
       setUser(mappedUser);
-      // Set default tab for driver
       if (mappedUser.role === Role.DRIVER) setActiveTab('expenses');
       fetchData();
     }
@@ -72,38 +71,26 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Update Attendance Status when Tracking Changes
   const toggleTracking = async () => {
     if (!user) return;
     const newTrackingState = !isTracking;
     setIsTracking(newTrackingState);
-
     const today = new Date().toISOString().split('T')[0];
     
-    // Get latest location to determine if back at office or on field
     navigator.geolocation.getCurrentPosition(async (pos) => {
       const branch = branches.find(b => b.id === user.branch_id);
       let newStatus = 'on-field';
-
       if (!newTrackingState && branch) {
         const dist = getDistance(pos.coords.latitude, pos.coords.longitude, branch.lat, branch.lng);
-        if (dist <= (branch.radius || 250)) {
-          newStatus = 'present';
-        }
+        if (dist <= (branch.radius || 250)) newStatus = 'present';
       } else if (newTrackingState) {
         newStatus = 'on-field';
       }
-
-      await supabase.from('attendance')
-        .update({ status: newStatus })
-        .eq('user_id', user.id)
-        .eq('date', today);
-        
-      fetchData(); // Refresh UI
+      await supabase.from('attendance').update({ status: newStatus }).eq('user_id', user.id).eq('date', today);
+      fetchData();
     });
   };
 
-  // Location Tracking Interval
   useEffect(() => {
     if (!user || !isTracking) return;
     const sendLocation = () => {
@@ -122,7 +109,6 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [user, isTracking]);
 
-  // Fetch Team Locations
   useEffect(() => {
     if (!user) return;
     const fetchLocations = async () => {
@@ -136,7 +122,6 @@ const App: React.FC = () => {
               const profile = allUsers.find(u => u.id === log.user_id);
               if (user.role === Role.BRANCH_ADMIN && profile?.branch_id !== user.branch_id) return;
               if (user.role === Role.OFFICER && log.user_id !== user.id) return;
-              // Drivers usually don't need tracking unless specified, but we can leave it
               latest[log.user_id] = { lat: log.lat, lng: log.lng, lastUpdate: log.timestamp, name: profile?.name, role: profile?.role, branch_id: profile?.branch_id };
             }
           });
@@ -160,22 +145,42 @@ const App: React.FC = () => {
 
   return (
     <Layout user={user} onLogout={() => supabase.auth.signOut()} activeTab={activeTab} setActiveTab={setActiveTab}>
-      <div className="max-w-6xl mx-auto h-full relative">
+      <div className="max-w-6xl mx-auto h-full relative flex flex-col min-h-0">
         {activeTab === 'attendance' && <AttendancePanel user={user} branches={branches} onAttendanceChange={fetchData} />}
+        
         {activeTab === 'tracking' && (
-          <div className="h-full flex flex-col space-y-4">
-            <div className="bg-white p-4 rounded-2xl border flex justify-between items-center shadow-sm">
-              <h4 className="font-bold text-slate-800">লাইভ লোকেশন (ব্রাঞ্চ: {branches.find(b => b.id === user.branch_id)?.name || 'Default'})</h4>
-              <button 
-                onClick={toggleTracking} 
-                className={`px-6 py-2 rounded-xl font-bold transition-all shadow-md ${isTracking ? 'bg-red-50 text-red-600 border border-red-100 hover:bg-red-100' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
-              >
-                {isTracking ? 'ফিল্ড ভিজিট শেষ' : 'ফিল্ড ভিজিট শুরু'}
-              </button>
-            </div>
-            <div className="flex-1"><LiveMap users={allUsers} trackingData={trackingData} currentUser={user} /></div>
+          // Use flex-1 to fill the remaining space, but force a minimum height
+          <div className="flex flex-col h-full space-y-4">
+             {/* Header */}
+             <div className="bg-white p-4 rounded-2xl border flex justify-between items-center shadow-sm shrink-0">
+               <div>
+                  <h4 className="font-black text-slate-800 text-sm">লাইভ লোকেশন</h4>
+                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{branches.find(b => b.id === user.branch_id)?.name || 'Branch'}</p>
+               </div>
+               <button 
+                 onClick={toggleTracking} 
+                 className={`px-4 py-2 rounded-xl font-black text-xs transition-all shadow-md ${isTracking ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-blue-600 text-white'}`}
+               >
+                 {isTracking ? 'Stop' : 'Start'}
+               </button>
+             </div>
+
+             {/* Map Container - Forced Height Calculation for Mobile & Desktop */}
+             <div 
+               className="w-full relative rounded-2xl overflow-hidden shadow-inner border border-slate-200 bg-slate-200"
+               style={{ 
+                 // On mobile (portrait), we want it to take most of the screen. 
+                 // We use a calculated height based on viewport (dvh) minus header/nav.
+                 // On desktop, we let flex handle it.
+                 height: 'calc(100dvh - 220px)',
+                 minHeight: '400px'
+               }}
+             >
+               <LiveMap users={allUsers} trackingData={trackingData} currentUser={user} />
+             </div>
           </div>
         )}
+
         {activeTab === 'expenses' && <ExpensePanel currentUser={user} allUsers={allUsers} />}
         {activeTab === 'dashboard' && <Dashboard currentUser={user} allUsers={allUsers} trackingData={trackingData} branches={branches} />}
         {activeTab === 'management' && <ManagementPanel currentUser={user} allUsers={allUsers} branches={branches} onRefresh={fetchData} />}
