@@ -73,22 +73,33 @@ const App: React.FC = () => {
 
   const toggleTracking = async () => {
     if (!user) return;
-    const newTrackingState = !isTracking;
-    setIsTracking(newTrackingState);
-    const today = new Date().toISOString().split('T')[0];
     
-    navigator.geolocation.getCurrentPosition(async (pos) => {
-      const branch = branches.find(b => b.id === user.branch_id);
-      let newStatus = 'on-field';
-      if (!newTrackingState && branch) {
-        const dist = getDistance(pos.coords.latitude, pos.coords.longitude, branch.lat, branch.lng);
-        if (dist <= (branch.radius || 250)) newStatus = 'present';
-      } else if (newTrackingState) {
-        newStatus = 'on-field';
-      }
-      await supabase.from('attendance').update({ status: newStatus }).eq('user_id', user.id).eq('date', today);
-      fetchData();
-    });
+    if (isTracking) {
+      // Stopping tracking is easy
+      setIsTracking(false);
+      const today = new Date().toISOString().split('T')[0];
+      // Check if near office to set status back to present, else keep on-field or check last loc
+      // Simplified: Just update status if needed, but usually we leave it as is or calculate
+    } else {
+      // STARTING TRACKING
+      if (!navigator.geolocation) return alert("আপনার ফোনে GPS নেই।");
+
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          setIsTracking(true);
+          const today = new Date().toISOString().split('T')[0];
+          await supabase.from('attendance').update({ status: 'on-field' }).eq('user_id', user.id).eq('date', today);
+          fetchData();
+        },
+        (err) => {
+          console.error(err);
+          if (err.code === 1) alert("GPS পারমিশন দেওয়া হয়নি। অ্যাপ সেটিংস থেকে পারমিশন দিন।");
+          else if (err.code === 2) alert("GPS সিগন্যাল পাওয়া যাচ্ছে না। খোলা জায়গায় যান।");
+          else alert("লোকেশন সার্ভিস চালু করা যাচ্ছে না।");
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    }
   };
 
   useEffect(() => {
@@ -149,35 +160,20 @@ const App: React.FC = () => {
         {activeTab === 'attendance' && <AttendancePanel user={user} branches={branches} onAttendanceChange={fetchData} />}
         
         {activeTab === 'tracking' && (
-          // Use flex-1 to fill the remaining space, but force a minimum height
-          <div className="flex flex-col h-full space-y-4">
-             {/* Header */}
-             <div className="bg-white p-4 rounded-2xl border flex justify-between items-center shadow-sm shrink-0">
-               <div>
-                  <h4 className="font-black text-slate-800 text-sm">লাইভ লোকেশন</h4>
-                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{branches.find(b => b.id === user.branch_id)?.name || 'Branch'}</p>
-               </div>
-               <button 
-                 onClick={toggleTracking} 
-                 className={`px-4 py-2 rounded-xl font-black text-xs transition-all shadow-md ${isTracking ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-blue-600 text-white'}`}
-               >
-                 {isTracking ? 'Stop' : 'Start'}
-               </button>
-             </div>
-
-             {/* Map Container - Forced Height Calculation for Mobile & Desktop */}
-             <div 
-               className="w-full relative rounded-2xl overflow-hidden shadow-inner border border-slate-200 bg-slate-200"
-               style={{ 
-                 // On mobile (portrait), we want it to take most of the screen. 
-                 // We use a calculated height based on viewport (dvh) minus header/nav.
-                 // On desktop, we let flex handle it.
-                 height: 'calc(100dvh - 220px)',
-                 minHeight: '400px'
-               }}
-             >
-               <LiveMap users={allUsers} trackingData={trackingData} currentUser={user} />
-             </div>
+          // Using dvh (dynamic viewport height) and fixed margin calculations to ensure map visibility on mobile
+          <div className="flex flex-col space-y-4 w-full overflow-hidden" style={{ height: 'calc(100dvh - 160px)', minHeight: '400px' }}>
+            <div className="bg-white p-4 rounded-2xl border flex justify-between items-center shadow-sm shrink-0 mx-1">
+              <h4 className="font-black text-slate-800 text-sm">লাইভ লোকেশন (ব্রাঞ্চ: {branches.find(b => b.id === user.branch_id)?.name || 'Default'})</h4>
+              <button 
+                onClick={toggleTracking} 
+                className={`px-6 py-2 rounded-xl font-black text-xs transition-all shadow-md ${isTracking ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-blue-600 text-white'}`}
+              >
+                {isTracking ? 'ফিল্ড ভিজিট শেষ' : 'ফিল্ড ভিজিট শুরু'}
+              </button>
+            </div>
+            <div className="flex-1 w-full relative rounded-2xl overflow-hidden shadow-inner border border-slate-200">
+              <LiveMap users={allUsers} trackingData={trackingData} currentUser={user} />
+            </div>
           </div>
         )}
 

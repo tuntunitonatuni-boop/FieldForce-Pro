@@ -56,12 +56,19 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
 
   const fetchExpenses = async () => {
     setLoading(true);
-    let query = supabase.from('expenses').select('*').order('date', { ascending: false }); // Ordered by Expense Date
+    // CRITICAL FIX: Increased range to 5000 to fetch more rows than default 1000
+    let query = supabase.from('expenses').select('*').order('date', { ascending: false }).range(0, 5000); 
+    
     // Drivers only see their own, Admins see all
     if (isDriver) {
       query = query.eq('user_id', currentUser.id);
     }
+    
     const { data, error } = await query;
+    if (error) {
+      console.error("Expense Fetch Error:", error);
+    }
+    
     if (data) setExpenses(data as any);
     setLoading(false);
   };
@@ -179,7 +186,11 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
   };
 
   // --- FILTER LOGIC ---
-  const filteredExpenses = expenses.filter(ex => ex.date.startsWith(selectedMonth));
+  const filteredExpenses = expenses.filter(ex => {
+    // Show all if no month selected
+    if (!selectedMonth) return true;
+    return ex.date.startsWith(selectedMonth);
+  });
 
   // --- REPORT GENERATION LOGIC ---
   const generateReportData = () => {
@@ -265,7 +276,7 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `monthly_expense_${selectedMonth}.csv`;
+    link.download = `monthly_expense_${selectedMonth || 'all_time'}.csv`;
     link.click();
   };
 
@@ -303,13 +314,18 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
               onClick={() => setViewMode('report')}
               className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${viewMode === 'report' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'}`}
             >
-              Monthly Report
+              Expense Report
             </button>
           </div>
         </div>
         <div className="flex items-center gap-3 w-full md:w-auto">
           <div className="flex flex-col">
-             <span className="text-[9px] font-bold text-slate-400 uppercase ml-1">Select Month</span>
+             <div className="flex justify-between items-center mb-1">
+               <span className="text-[9px] font-bold text-slate-400 uppercase ml-1">Select Month</span>
+               {selectedMonth && (
+                 <button onClick={() => setSelectedMonth('')} className="text-[9px] font-bold text-red-500 uppercase hover:underline">Clear Filter</button>
+               )}
+             </div>
              <input 
               type="month" 
               value={selectedMonth}
@@ -524,11 +540,11 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
             </form>
           </div>
           
-          {/* FILTERED LIST (UPDATED LOGIC) */}
+          {/* FILTERED LIST */}
            <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-xl overflow-hidden">
              <div className="p-6 border-b border-slate-50 flex justify-between items-center">
                <h4 className="font-black text-slate-800">
-                 {selectedMonth} মাসের খরচের তালিকা
+                 {selectedMonth ? `${selectedMonth} মাসের` : 'সকল'} খরচের তালিকা
                </h4>
                <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded-lg font-bold">
                  Total Records: {filteredExpenses.length}
@@ -559,7 +575,7 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
                     ) : (
                       <tr>
                         <td colSpan={5} className="p-8 text-center text-slate-400 font-bold text-xs">
-                          এই মাসে কোনো ডাটা পাওয়া যায়নি। উপরের মাস পরিবর্তন করে দেখুন।
+                          কোনো ডাটা পাওয়া যায়নি।
                         </td>
                       </tr>
                     )}
@@ -571,12 +587,12 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
         </div>
       )}
 
-      {/* MATRIX REPORT VIEW - UNCHANGED BUT BENEFITS FROM DATA FETCH */}
+      {/* MATRIX REPORT VIEW */}
       {viewMode === 'report' && (
         <div id="printable-area" className="bg-white rounded-[2rem] shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in duration-300">
            <div className="hidden print:block p-4 text-center border-b border-slate-200 mb-4">
-             <h2 className="text-2xl font-black text-slate-800">Monthly Expense Report</h2>
-             <p className="text-sm text-slate-500">{selectedMonth}</p>
+             <h2 className="text-2xl font-black text-slate-800">Expense Report</h2>
+             <p className="text-sm text-slate-500">{selectedMonth || 'All Time'}</p>
            </div>
            <div className="overflow-x-auto">
              <table className="w-full text-left border-collapse">
@@ -623,7 +639,7 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
                    </tr>
                  ))}
                  {reportData.length === 0 && (
-                   <tr><td colSpan={100} className="p-10 text-center text-slate-400">এই মাসে কোনো ডাটা নেই।</td></tr>
+                   <tr><td colSpan={100} className="p-10 text-center text-slate-400">কোনো ডাটা নেই।</td></tr>
                  )}
                </tbody>
              </table>
