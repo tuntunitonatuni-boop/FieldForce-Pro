@@ -56,7 +56,7 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
 
   const fetchExpenses = async () => {
     setLoading(true);
-    let query = supabase.from('expenses').select('*').order('created_at', { ascending: false });
+    let query = supabase.from('expenses').select('*').order('date', { ascending: false }); // Ordered by Expense Date
     // Drivers only see their own, Admins see all
     if (isDriver) {
       query = query.eq('user_id', currentUser.id);
@@ -75,7 +75,6 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
   const handleAddVehicle = async () => {
     if (!newVehicle.name) return alert("গাড়ির নাম দিন।");
     
-    // Use crypto.randomUUID if available for better database compatibility (UUID vs Text)
     const newId = typeof crypto !== 'undefined' && crypto.randomUUID 
       ? crypto.randomUUID() 
       : `v-${Math.random().toString(36).substr(2, 9)}`;
@@ -126,7 +125,7 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
       .from('expense-vouchers')
       .upload(filePath, file);
 
-    if (uploadError) return null; // Handle silently for now or throw
+    if (uploadError) return null;
 
     const { data } = supabase.storage.from('expense-vouchers').getPublicUrl(filePath);
     return data.publicUrl;
@@ -137,8 +136,6 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
     if (!amount) return alert("টাকার পরিমাণ আবশ্যক।");
     if (!entryDate) return alert("তারিখ নির্বাচন করুন।");
     
-    // Validation: Check if vehicle is needed
-    // Note: motorcycle_bill is removed, now mapped via vehicle type
     const needsVehicle = ['fuel', 'maintenance', 'toll'].includes(expenseType);
     if (needsVehicle && !selectedVehicleId && vehicles.length > 0) {
       return alert("দয়া করে গাড়ি অথবা বাইক সিলেক্ট করুন।");
@@ -161,7 +158,7 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
         odometer: odometer ? parseFloat(odometer) : null,
         description,
         voucher_url: voucherUrl,
-        date: entryDate // Use selected date
+        date: entryDate
       });
 
       if (error) throw error;
@@ -174,7 +171,6 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
       setDescription('');
       setFile(null);
       setPreviewUrl(null);
-      // Keep date as is for easier bulk entry, or could reset to today: setEntryDate(new Date().toISOString().split('T')[0]);
       fetchExpenses();
     } catch (e: any) {
       alert("সমস্যা হয়েছে: " + e.message);
@@ -182,16 +178,15 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
     setLoading(false);
   };
 
+  // --- FILTER LOGIC ---
+  const filteredExpenses = expenses.filter(ex => ex.date.startsWith(selectedMonth));
+
   // --- REPORT GENERATION LOGIC ---
   const generateReportData = () => {
-    const filtered = expenses.filter(ex => ex.date.startsWith(selectedMonth));
+    const dates = Array.from(new Set(filteredExpenses.map(ex => ex.date))).sort();
     
-    // Get unique dates
-    const dates = Array.from(new Set(filtered.map(ex => ex.date))).sort();
-    
-    // Organize by Date -> Vehicle/Type
     return dates.map((date, index) => {
-      const daysExpenses = filtered.filter(ex => ex.date === date);
+      const daysExpenses = filteredExpenses.filter(ex => ex.date === date);
       
       const rowData: any = {
         serial: index + 1,
@@ -205,7 +200,6 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
         sign: ''
       };
 
-      // Initialize vehicles map
       vehicles.forEach(v => {
         rowData.vehicles[v.id] = { lpg: 0, petrol: 0, bill99: 0 };
       });
@@ -215,27 +209,21 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
         const isMoto = vehicle?.type === 'motorcycle';
         const isCar = vehicle?.type === 'car';
 
-        // 1. Motorcycle Logic: Sum everything for motorcycles into one column
         if (isMoto) {
             rowData.motorcycle_bill += ex.amount;
-        } 
-        // 2. Car & General Logic
-        else {
+        } else {
             if (ex.type === 'fuel' && isCar && vehicle) {
                 if (ex.fuel_type === 'lpg') rowData.vehicles[vehicle.id].lpg += ex.amount;
                 else if (ex.fuel_type === '99') rowData.vehicles[vehicle.id].bill99 += ex.amount;
-                else rowData.vehicles[vehicle.id].petrol += ex.amount; // petrol, octane, diesel
+                else rowData.vehicles[vehicle.id].petrol += ex.amount;
             } else if (ex.type === 'maintenance') {
-                rowData.maintenance += ex.amount; // Only car/general maintenance
+                rowData.maintenance += ex.amount;
             } else if (ex.type === 'toll') {
-                rowData.toll += ex.amount; // Only car/general toll
+                rowData.toll += ex.amount;
             } else if (ex.type === 'cooking_gas') {
                 rowData.cooking_gas += ex.amount;
-            } else if (ex.type === 'other') {
-                // Decide where 'other' goes? Currently just added to total, not specific column
             }
         }
-        
         rowData.total += ex.amount;
       });
 
@@ -246,7 +234,6 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
   const reportData = generateReportData();
 
   const exportToCSV = () => {
-    // Header Row 1: Vehicles
     let header1 = ["SL", "Date"];
     vehicles.filter(v => v.type === 'car').forEach(v => {
       header1.push(`${v.name} (LPG)`);
@@ -259,7 +246,6 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
     header1.push("Cooking Gas");
     header1.push("Total Price");
 
-    // Rows
     const rows = reportData.map(r => {
       let row = [r.serial, r.date];
       vehicles.filter(v => v.type === 'car').forEach(v => {
@@ -291,62 +277,19 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
     <div className="space-y-8 pb-20">
       <style>{`
         @media print {
-          /* 1. Reset global layout constraints causing blank pages */
-          html, body, #root, main {
-            height: auto !important;
-            overflow: visible !important;
-            min-height: auto !important;
-          }
-
-          /* 2. Hide everything by default */
-          body * {
-            visibility: hidden;
-          }
-
-          /* 3. Make the report container visible and positioned at top */
-          #printable-area, #printable-area * {
-            visibility: visible;
-          }
-          
-          #printable-area {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: auto;
-            background: white;
-            z-index: 9999;
-            padding: 20px;
-            margin: 0;
-          }
-
-          /* 4. Table specific print styles */
-          table {
-            width: 100% !important;
-            border-collapse: collapse;
-          }
-          
-          /* Ensure colors print */
-          * {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-
-          /* Landscape mode preference */
-          @page {
-            size: landscape;
-            margin: 0.5cm;
-          }
-          
-          /* Hide scrollbars */
-          ::-webkit-scrollbar {
-            display: none;
-          }
+          html, body, #root, main { height: auto !important; overflow: visible !important; min-height: auto !important; }
+          body * { visibility: hidden; }
+          #printable-area, #printable-area * { visibility: visible; }
+          #printable-area { position: absolute; left: 0; top: 0; width: 100%; height: auto; background: white; z-index: 9999; padding: 20px; margin: 0; }
+          table { width: 100% !important; border-collapse: collapse; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          @page { size: landscape; margin: 0.5cm; }
+          ::-webkit-scrollbar { display: none; }
         }
       `}</style>
 
       {/* HEADER CONTROLS */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm sticky top-0 z-40">
         <div>
           <h2 className="text-2xl font-black text-slate-800">গাড়ির খরচ ব্যবস্থাপনা</h2>
           <div className="flex space-x-2 mt-2">
@@ -365,21 +308,32 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
           </div>
         </div>
         <div className="flex items-center gap-3 w-full md:w-auto">
-          <input 
-            type="month" 
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-            className="px-4 py-3 rounded-2xl border border-slate-200 font-bold text-slate-700 outline-none focus:border-blue-500 transition-all bg-slate-50"
-          />
+          <div className="flex flex-col">
+             <span className="text-[9px] font-bold text-slate-400 uppercase ml-1">Select Month</span>
+             <input 
+              type="month" 
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="px-4 py-3 rounded-2xl border border-slate-200 font-bold text-slate-700 outline-none focus:border-blue-500 transition-all bg-slate-50"
+            />
+          </div>
+          <button 
+            onClick={fetchExpenses}
+            className="p-3 bg-slate-100 rounded-2xl text-slate-500 hover:text-blue-600 active:scale-90 transition-all mt-4"
+            title="Refresh Data"
+          >
+            <svg className={`w-6 h-6 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+          </button>
+          
           {viewMode === 'report' && (
-            <div className="flex gap-2">
-              <button onClick={handlePrint} className="px-6 py-3 bg-slate-800 text-white rounded-2xl font-black shadow-lg hover:bg-slate-900 transition-all flex items-center">
-                 <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
-                 Print
+            <div className="flex gap-2 mt-4">
+              <button onClick={handlePrint} className="px-4 py-3 bg-slate-800 text-white rounded-2xl font-black shadow-lg hover:bg-slate-900 transition-all flex items-center">
+                 <svg className="w-5 h-5 md:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                 <span className="hidden md:inline">Print</span>
               </button>
-              <button onClick={exportToCSV} className="px-6 py-3 bg-green-600 text-white rounded-2xl font-black shadow-lg hover:bg-green-700 transition-all flex items-center">
-                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                Excel
+              <button onClick={exportToCSV} className="px-4 py-3 bg-green-600 text-white rounded-2xl font-black shadow-lg hover:bg-green-700 transition-all flex items-center">
+                <svg className="w-5 h-5 md:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                <span className="hidden md:inline">Excel</span>
               </button>
             </div>
           )}
@@ -389,7 +343,7 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
       {viewMode === 'entry' && (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
           
-          {/* VEHICLE MANAGER (Admins Only) */}
+          {/* VEHICLE MANAGER */}
           {isAdmin && (
             <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
               <div className="flex justify-between items-center mb-4">
@@ -438,7 +392,6 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
             <h3 className="font-black text-slate-800 mb-6 uppercase text-[10px] tracking-widest border-b border-slate-50 pb-4">নতুন খরচ যোগ করুন</h3>
             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               
-              {/* Type Selection */}
               <div className="md:col-span-3 grid grid-cols-3 md:grid-cols-6 gap-2">
                 {[
                   { id: 'fuel', label: 'Fuel' },
@@ -458,7 +411,6 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
                 ))}
               </div>
 
-              {/* DATE SELECTOR (New) */}
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">তারিখ (Date)</label>
                 <input 
@@ -469,10 +421,8 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
                 />
               </div>
 
-              {/* Dynamic Fields */}
               {['fuel', 'maintenance', 'toll'].includes(expenseType) && (
                 <div className="md:col-span-1 space-y-4">
-                  {/* Category Selection */}
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Vehicle Category</label>
                     <div className="flex bg-slate-100 p-1 rounded-xl">
@@ -493,7 +443,6 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
                     </div>
                   </div>
 
-                  {/* Filtered Dropdown */}
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">{vehicleCategory === 'car' ? 'গাড়ি' : 'বাইক'} নির্বাচন করুন</label>
                     <select value={selectedVehicleId} onChange={e => setSelectedVehicleId(e.target.value)} className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none font-bold">
@@ -519,27 +468,24 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
                 </>
               )}
 
-              {/* Amount - Always Visible */}
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">টাকার পরিমাণ</label>
                 <input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none font-bold" placeholder="0.00" />
               </div>
 
-              {/* Rate & Auto-Quantity for Fuel */}
               {expenseType === 'fuel' && (
                 <>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">ইউনিট প্রাইস (প্রতি লিটার/কেজি)</label>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">ইউনিট প্রাইস</label>
                     <input type="number" step="0.01" value={unitPrice} onChange={e => setUnitPrice(e.target.value)} className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none font-bold" placeholder="Rate per unit" />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">পরিমাণ (লিটার/কেজি) - Auto</label>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">পরিমাণ (Auto)</label>
                     <input type="text" value={quantity} readOnly className="w-full p-4 bg-slate-100 text-slate-500 rounded-2xl border border-slate-100 outline-none font-bold cursor-not-allowed" placeholder="Auto Calculated" />
                   </div>
                 </>
               )}
 
-              {/* Remarks Field - Prominent for Maintenance */}
               <div className="md:col-span-2">
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
                   {expenseType === 'maintenance' ? 'কি কাজ করানো হয়েছে? (Remarks)' : 'মন্তব্য / Remarks'}
@@ -578,40 +524,56 @@ const ExpensePanel: React.FC<ExpensePanelProps> = ({ currentUser, allUsers }) =>
             </form>
           </div>
           
-          {/* RECENT LIST */}
+          {/* FILTERED LIST (UPDATED LOGIC) */}
            <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-xl overflow-hidden">
-             <div className="p-6 border-b border-slate-50"><h4 className="font-black text-slate-800">সাম্প্রতিক এন্ট্রি</h4></div>
-             <table className="w-full text-left">
-                <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">
-                  <tr>
-                    <th className="px-6 py-4">Date</th>
-                    <th className="px-6 py-4">Type</th>
-                    <th className="px-6 py-4">Vehicle</th>
-                    <th className="px-6 py-4">Amount</th>
-                    <th className="px-6 py-4">Remarks</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {expenses.slice(0, 5).map(ex => (
-                    <tr key={ex.id}>
-                      <td className="px-6 py-4 text-xs font-bold text-slate-600">{ex.date}</td>
-                      <td className="px-6 py-4 text-xs font-black uppercase text-slate-800">{ex.type} {ex.fuel_type && `(${ex.fuel_type})`}</td>
-                      <td className="px-6 py-4 text-xs font-bold text-blue-600">{vehicles.find(v => v.id === ex.vehicle_id)?.name || '-'}</td>
-                      <td className="px-6 py-4 text-xs font-bold text-slate-800">৳{ex.amount}</td>
-                      <td className="px-6 py-4 text-xs text-slate-500">{ex.description || '-'}</td>
+             <div className="p-6 border-b border-slate-50 flex justify-between items-center">
+               <h4 className="font-black text-slate-800">
+                 {selectedMonth} মাসের খরচের তালিকা
+               </h4>
+               <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded-lg font-bold">
+                 Total Records: {filteredExpenses.length}
+               </span>
+             </div>
+             <div className="overflow-x-auto">
+               <table className="w-full text-left">
+                  <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">
+                    <tr>
+                      <th className="px-6 py-4">Date</th>
+                      <th className="px-6 py-4">Type</th>
+                      <th className="px-6 py-4">Vehicle</th>
+                      <th className="px-6 py-4">Amount</th>
+                      <th className="px-6 py-4">Remarks</th>
                     </tr>
-                  ))}
-                </tbody>
-             </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {filteredExpenses.length > 0 ? (
+                      filteredExpenses.map(ex => (
+                        <tr key={ex.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-6 py-4 text-xs font-bold text-slate-600 whitespace-nowrap">{ex.date}</td>
+                          <td className="px-6 py-4 text-xs font-black uppercase text-slate-800">{ex.type} {ex.fuel_type && `(${ex.fuel_type})`}</td>
+                          <td className="px-6 py-4 text-xs font-bold text-blue-600">{vehicles.find(v => v.id === ex.vehicle_id)?.name || '-'}</td>
+                          <td className="px-6 py-4 text-xs font-bold text-slate-800">৳{ex.amount}</td>
+                          <td className="px-6 py-4 text-xs text-slate-500">{ex.description || '-'}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={5} className="p-8 text-center text-slate-400 font-bold text-xs">
+                          এই মাসে কোনো ডাটা পাওয়া যায়নি। উপরের মাস পরিবর্তন করে দেখুন।
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+               </table>
+             </div>
            </div>
 
         </div>
       )}
 
-      {/* MATRIX REPORT VIEW */}
+      {/* MATRIX REPORT VIEW - UNCHANGED BUT BENEFITS FROM DATA FETCH */}
       {viewMode === 'report' && (
         <div id="printable-area" className="bg-white rounded-[2rem] shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in duration-300">
-           {/* Add a print-only header */}
            <div className="hidden print:block p-4 text-center border-b border-slate-200 mb-4">
              <h2 className="text-2xl font-black text-slate-800">Monthly Expense Report</h2>
              <p className="text-sm text-slate-500">{selectedMonth}</p>
