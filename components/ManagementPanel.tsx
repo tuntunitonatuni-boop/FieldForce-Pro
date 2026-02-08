@@ -11,9 +11,10 @@ interface ManagementPanelProps {
 }
 
 const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers, branches, onRefresh }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'branches' | 'admins' | 'officers' | 'drivers'>('officers');
+  const [activeSubTab, setActiveSubTab] = useState<'branches' | 'admins' | 'officers' | 'drivers' | 'reports'>('officers');
   const [loading, setLoading] = useState(false);
   
+  // User Management State
   const [showAddForm, setShowAddForm] = useState(false);
   const [newUser, setNewUser] = useState({ 
     email: '', 
@@ -24,6 +25,13 @@ const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers
     role: Role.OFFICER,
     branch_id: currentUser.branch_id // Default to admin's branch
   });
+
+  // Branch Management State
+  const [newBranch, setNewBranch] = useState({ id: '', name: '', lat: 0, lng: 0, radius: 100, target_amount: 0 });
+  const [gettingLocation, setGettingLocation] = useState(false);
+
+  // Report State
+  const [reportMonth, setReportMonth] = useState(new Date().toISOString().slice(0, 7));
 
   const isSuperAdmin = currentUser.role === Role.SUPER_ADMIN;
   const isBranchAdmin = currentUser.role === Role.BRANCH_ADMIN;
@@ -37,15 +45,32 @@ const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers
     return false;
   });
 
-  const [newBranch, setNewBranch] = useState({ id: '', name: '', lat: 23.8, lng: 90.4, radius: 250, target_amount: 0 });
+  // --- BRANCH ACTIONS ---
+  const getCurrentLocationForBranch = () => {
+    if (!navigator.geolocation) return alert("আপনার ডিভাইসে GPS নেই।");
+    setGettingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setNewBranch({ ...newBranch, lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setGettingLocation(false);
+      },
+      (err) => {
+        alert("লোকেশন পাওয়া যায়নি: " + err.message);
+        setGettingLocation(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
 
   const handleAddBranch = async () => {
     if (!newBranch.id || !newBranch.name) return alert("ব্রাঞ্চ আইডি এবং নাম অবশ্যই দিতে হবে।");
+    if (newBranch.lat === 0 || newBranch.lng === 0) return alert("ব্রাঞ্চের লোকেশন (Lat/Lng) সেট করা হয়নি।");
+
     setLoading(true);
     try {
       const { error } = await supabase.from('branches').insert(newBranch);
       if (error) throw error;
-      setNewBranch({ id: '', name: '', lat: 23.8, lng: 90.4, radius: 250, target_amount: 0 });
+      setNewBranch({ id: '', name: '', lat: 0, lng: 0, radius: 100, target_amount: 0 });
       onRefresh();
       alert("ব্রাঞ্চ সফলভাবে তৈরি হয়েছে!");
     } catch (e: any) { 
@@ -73,6 +98,7 @@ const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers
     setLoading(false);
   };
 
+  // --- USER ACTIONS ---
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     const targetRole = isBranchAdmin ? Role.OFFICER : newUser.role;
@@ -128,6 +154,52 @@ const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers
     setLoading(false);
   };
 
+  // --- REPORTING ACTIONS ---
+  const handleDownloadReport = async () => {
+    setLoading(true);
+    try {
+      // Fetch attendance for selected month
+      // Note: We need to join with profiles manually since we are using simple queries
+      let query = supabase.from('attendance').select('*').like('date', `${reportMonth}%`).order('date', { ascending: true });
+      
+      const { data: attendanceData, error } = await query;
+      if (error) throw error;
+
+      if (!attendanceData || attendanceData.length === 0) {
+        alert("এই মাসের কোনো ডাটা পাওয়া যায়নি।");
+        setLoading(false);
+        return;
+      }
+
+      // Generate CSV
+      let csvContent = "Date,Staff Name,Role,Branch,Status,Check In,Check Out\n";
+
+      attendanceData.forEach((record: any) => {
+        const staff = allUsers.find(u => u.id === record.user_id);
+        // Filter for Branch Admin: only show their branch
+        if (isBranchAdmin && staff?.branch_id !== currentUser.branch_id) return;
+        
+        if (staff) {
+          const branchName = branches.find(b => b.id === staff.branch_id)?.name || 'Unknown';
+          const checkIn = record.check_in ? new Date(record.check_in).toLocaleTimeString() : '-';
+          const checkOut = record.check_out ? new Date(record.check_out).toLocaleTimeString() : '-';
+          
+          csvContent += `${record.date},"${staff.name}",${staff.role},"${branchName}",${record.status},${checkIn},${checkOut}\n`;
+        }
+      });
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `Attendance_Report_${reportMonth}.csv`;
+      link.click();
+
+    } catch (e: any) {
+      alert("রিপোর্ট জেনারেট করতে সমস্যা হয়েছে: " + e.message);
+    }
+    setLoading(false);
+  };
+
   // Helper to get list based on tab
   const getList = () => {
     switch(activeSubTab) {
@@ -149,7 +221,42 @@ const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers
             <button onClick={() => setActiveSubTab('branches')} className={`pb-4 px-2 whitespace-nowrap font-black text-xs uppercase tracking-widest transition-all ${activeSubTab === 'branches' ? 'border-b-4 border-blue-600 text-blue-600' : 'text-slate-400'}`}>ব্রাঞ্চ ম্যানেজমেন্ট</button>
           </>
         )}
+        <button onClick={() => setActiveSubTab('reports')} className={`pb-4 px-2 whitespace-nowrap font-black text-xs uppercase tracking-widest transition-all ${activeSubTab === 'reports' ? 'border-b-4 border-green-600 text-green-600' : 'text-slate-400'}`}>রিপোর্ট ও স্যালারি</button>
       </div>
+
+      {/* REPORTING TAB */}
+      {activeSubTab === 'reports' && (
+        <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-xl animate-in fade-in duration-500">
+           <h3 className="text-xl font-black text-slate-800 mb-2">অ্যাটেন্ডেন্স রিপোর্ট</h3>
+           <p className="text-sm text-slate-500 mb-6">পুরো মাসের হাজিরা এবং কাজের সময় ডাউনলোড করুন স্যালারি প্রসেসিংয়ের জন্য।</p>
+           
+           <div className="flex flex-col md:flex-row gap-4 items-end">
+             <div className="w-full md:w-auto">
+               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Select Month</label>
+               <input 
+                  type="month" 
+                  value={reportMonth} 
+                  onChange={(e) => setReportMonth(e.target.value)}
+                  className="w-full px-6 py-4 bg-slate-50 rounded-2xl border border-slate-200 font-bold text-slate-700 outline-none"
+                />
+             </div>
+             <button 
+               onClick={handleDownloadReport} 
+               disabled={loading}
+               className="w-full md:w-auto px-8 py-4 bg-green-600 text-white rounded-2xl font-black shadow-lg hover:bg-green-700 transition-all flex items-center justify-center space-x-2"
+             >
+               {loading ? (
+                 <span>জেনারেট হচ্ছে...</span>
+               ) : (
+                 <>
+                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                   <span>Download Excel (CSV)</span>
+                 </>
+               )}
+             </button>
+           </div>
+        </div>
+      )}
 
       {/* BRANCH MANAGEMENT - Super Admin Only */}
       {activeSubTab === 'branches' && isSuperAdmin && (
@@ -159,6 +266,31 @@ const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers
             <div className="space-y-4">
               <input type="text" placeholder="ID (যেমন: b10)" value={newBranch.id} onChange={e => setNewBranch({...newBranch, id: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none font-bold focus:border-blue-500 transition-all" />
               <input type="text" placeholder="ব্রাঞ্চের নাম" value={newBranch.name} onChange={e => setNewBranch({...newBranch, name: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none font-bold focus:border-blue-500 transition-all" />
+              
+              <div className="grid grid-cols-2 gap-2">
+                 <input type="number" placeholder="Lat" value={newBranch.lat || ''} onChange={e => setNewBranch({...newBranch, lat: parseFloat(e.target.value)})} className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none font-bold text-xs" />
+                 <input type="number" placeholder="Lng" value={newBranch.lng || ''} onChange={e => setNewBranch({...newBranch, lng: parseFloat(e.target.value)})} className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none font-bold text-xs" />
+              </div>
+              
+              <button 
+                onClick={getCurrentLocationForBranch} 
+                disabled={gettingLocation}
+                className="w-full py-3 bg-indigo-50 text-indigo-600 rounded-xl font-black text-xs uppercase tracking-widest border border-indigo-100 hover:bg-indigo-100 transition-all flex items-center justify-center space-x-2"
+              >
+                 {gettingLocation ? (
+                   <span className="animate-pulse">GPS Searching...</span>
+                 ) : (
+                   <>
+                     <span>📍 Set Current Location</span>
+                   </>
+                 )}
+              </button>
+
+              <div className="pt-2">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Coverage Radius (Meters)</label>
+                <input type="number" value={newBranch.radius} onChange={e => setNewBranch({...newBranch, radius: parseInt(e.target.value)})} className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none font-bold" />
+              </div>
+
               <button onClick={handleAddBranch} disabled={loading} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black shadow-xl hover:bg-blue-700 transition-all">
                 {loading ? 'সেভ হচ্ছে...' : 'সেভ করুন'}
               </button>
@@ -167,12 +299,19 @@ const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers
           <div className="lg:col-span-2 bg-white rounded-[2rem] border border-slate-100 shadow-xl overflow-hidden">
              <table className="w-full text-left hidden md:table">
               <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">
-                <tr><th className="px-8 py-5">Branch Name</th><th className="px-8 py-5 text-right">Action</th></tr>
+                <tr><th className="px-8 py-5">Branch Name</th><th className="px-8 py-5">Location</th><th className="px-8 py-5 text-right">Action</th></tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {branches.map(b => (
                   <tr key={b.id} className="hover:bg-slate-50">
-                    <td className="px-8 py-5 font-black text-slate-800">{b.name} <span className="text-slate-400 text-[10px] ml-2 font-bold uppercase tracking-widest">ID: {b.id}</span></td>
+                    <td className="px-8 py-5">
+                      <p className="font-black text-slate-800">{b.name}</p>
+                      <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">ID: {b.id}</p>
+                    </td>
+                    <td className="px-8 py-5 text-xs font-bold text-slate-500">
+                      {b.lat.toFixed(4)}, {b.lng.toFixed(4)} <br/>
+                      <span className="text-blue-500">Radius: {b.radius}m</span>
+                    </td>
                     <td className="px-8 py-5 text-right">
                       <button 
                         onClick={() => handleDeleteBranch(b.id, b.name)} 
@@ -192,7 +331,7 @@ const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers
                   <div key={b.id} className="bg-slate-50 p-4 rounded-xl flex justify-between items-center">
                     <div>
                       <p className="font-black text-slate-800">{b.name}</p>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ID: {b.id}</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ID: {b.id} • {b.radius}m</p>
                     </div>
                     <button onClick={() => handleDeleteBranch(b.id, b.name)} className="text-red-500 text-xs font-black uppercase bg-white p-2 rounded-lg shadow-sm">Delete</button>
                   </div>
@@ -203,7 +342,7 @@ const ManagementPanel: React.FC<ManagementPanelProps> = ({ currentUser, allUsers
       )}
 
       {/* USER LISTS */}
-      {activeSubTab !== 'branches' && (
+      {activeSubTab !== 'branches' && activeSubTab !== 'reports' && (
         <div className="space-y-8 animate-in fade-in duration-500">
           <div className="flex justify-between items-center">
             <div>

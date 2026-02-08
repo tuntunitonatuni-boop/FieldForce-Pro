@@ -17,7 +17,7 @@ const AttendancePanel: React.FC<AttendancePanelProps> = ({ user, branches, onAtt
   const [isChecking, setIsChecking] = useState(false);
   const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
 
-  const assignedBranch = branches.find(b => b.id === user.branch_id) || branches[0] || { id: 'temp', name: 'Loading...', lat: 0, lng: 0, radius: 250 };
+  const assignedBranch = branches.find(b => b.id === user.branch_id) || branches[0] || { id: 'temp', name: 'Loading...', lat: 0, lng: 0, radius: 100 };
 
   const fetchLocation = () => {
     setError(null);
@@ -95,7 +95,7 @@ const AttendancePanel: React.FC<AttendancePanelProps> = ({ user, branches, onAtt
     
     setIsChecking(true);
     const distance = getDistance(currentPos.lat, currentPos.lng, assignedBranch.lat, assignedBranch.lng);
-    const radius = assignedBranch.radius || 250;
+    const radius = assignedBranch.radius || 100; // Default strictly to 100 if not set
 
     // Allow a small buffer for GPS inaccuracy (e.g., +20 meters)
     const allowedRadius = radius + 20;
@@ -126,7 +126,7 @@ const AttendancePanel: React.FC<AttendancePanelProps> = ({ user, branches, onAtt
         if (navigator.vibrate) navigator.vibrate(200);
       } catch (err) { alert("চেক-ইন করতে সমস্যা হয়েছে। ইন্টারনেট কানেকশন চেক করুন।"); }
     } else {
-      alert(`আপনি অফিস থেকে ${Math.round(distance - radius)} মিটার দূরে আছেন। চেক-ইন সম্ভব নয়।`);
+      alert(`অ্যাটেন্ডেন্স ব্যর্থ হয়েছে!\n\nআপনার লোকেশন: ${assignedBranch.name} থেকে ${Math.round(distance)} মিটার দূরে।\n\nনিয়ম: সর্বোচ্চ ${radius} মিটারের মধ্যে থাকতে হবে। দয়া করে অফিসের সীমানার ভেতরে আসুন।`);
     }
     setIsChecking(false);
   };
@@ -151,8 +151,9 @@ const AttendancePanel: React.FC<AttendancePanelProps> = ({ user, branches, onAtt
       <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-[1.5rem] md:rounded-[2rem] p-6 md:p-8 text-white shadow-xl shadow-blue-500/20 relative overflow-hidden shrink-0">
         <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl"></div>
         <div className="relative z-10">
-          <p className="text-blue-200 text-xs font-black uppercase tracking-widest mb-1 md:mb-2">আপনার ব্রাঞ্চ</p>
+          <p className="text-blue-200 text-xs font-black uppercase tracking-widest mb-1 md:mb-2">আপনার ব্রাঞ্চ (অফিস)</p>
           <h3 className="text-xl md:text-2xl font-black leading-tight break-words">{assignedBranch.name}</h3>
+          <p className="text-[10px] text-blue-200 mt-1">কভারেজ: {assignedBranch.radius} মিটার</p>
           <div className="flex items-center space-x-2 mt-3 md:mt-4">
              <div className={`w-2.5 h-2.5 md:w-3 md:h-3 rounded-full ${attendance?.check_in && !attendance.check_out ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}></div>
              <p className="text-xs md:text-sm font-bold opacity-90">
